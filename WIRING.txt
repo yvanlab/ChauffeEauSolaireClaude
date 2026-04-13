@@ -1,0 +1,136 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║           SCHÉMA DE CÂBLAGE - CHAUFFAGE SOLAIRE SPA                 ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                            ESP32                                     │
+│                                                                      │
+│  3.3V ──┬────────────────────────────────┬─ VCC (DS18B20 x3)       │
+│         │                                 │                          │
+│         │                              4.7kΩ (Pull-up)              │
+│         │                                 │                          │
+│  GPIO4 ─┴─────────────────────────────── DATA (DS18B20 x3)         │
+│                                                                      │
+│  GND ───────────────────────────────────── GND (DS18B20 x3)         │
+│                                                                      │
+│                                                                      │
+│  GPIO14 ───────────────────────────────── IN (Relay Module)         │
+│                                                                      │
+│  5V ────────────────────────────────────── VCC (Relay Module)       │
+│  GND ───────────────────────────────────── GND (Relay Module)       │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                    DS18B20 Temperature Sensors                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Sensor 1 (Air):                                                    │
+│    ┌──────┐                                                         │
+│    │ ║║║  │   Red   → 3.3V                                          │
+│    │ ║║║  │   Black → GND                                           │
+│    │ ║║║  │   Yellow→ GPIO4                                         │
+│    └──────┘                                                         │
+│                                                                      │
+│  Sensor 2 (Spa Water):                                              │
+│    - Same connections as Sensor 1                                   │
+│    - Place in waterproof probe                                      │
+│                                                                      │
+│  Sensor 3 (Solar Panel Water):                                      │
+│    - Same connections as Sensor 1                                   │
+│    - Place in waterproof probe                                      │
+│                                                                      │
+│  Note: All three sensors share the same GPIO4 pin (OneWire bus)     │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Relay Module (Pump)                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ESP32 Side:                                                         │
+│    VCC  → 5V                                                         │
+│    GND  → GND                                                        │
+│    IN   → GPIO14                                                     │
+│                                                                      │
+│  Pump Side:                                                          │
+│    COM  → Power Line (from power source)                            │
+│    NO   → Pump Motor (normally open)                                │
+│    NC   → (not connected)                                           │
+│                                                                      │
+│  ⚠️  WARNING: Ensure proper electrical isolation!                   │
+│     If controlling AC pump, use appropriate relay rated for AC      │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                    PULLUP RESISTOR DETAIL                            ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+                    3.3V
+                     │
+                     │
+                   ┌─┴─┐
+                   │   │
+                   │ R │  4.7kΩ
+                   │   │
+                   └─┬─┘
+                     │
+     GPIO4 ──────────┼────────── DATA (All DS18B20s)
+                     │
+                     │
+                    ═══  (All sensor GND)
+                    GND
+
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                      PHYSICAL INSTALLATION                           ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+1. Air Temperature Sensor:
+   - Mount in shaded location near solar panels
+   - Protect from direct sunlight and rain
+   - Allow air circulation
+
+2. Spa Water Temperature Sensor:
+   - Use waterproof DS18B20 probe
+   - Submerge in spa water
+   - Secure with waterproof cable gland
+
+3. Solar Panel Water Temperature Sensor:
+   - Use waterproof DS18B20 probe
+   - Install in panel output line
+   - Must measure water exiting panels (hottest point)
+
+4. Relay/Pump Connection:
+   - Ensure relay rating matches pump specifications
+   - Use proper gauge wire for pump current
+   - Include fuse protection
+   - Follow local electrical codes
+
+5. ESP32 Enclosure:
+   - Use waterproof enclosure
+   - IP65 rated minimum
+   - Provide adequate ventilation for heat dissipation
+   - Mount near power source and pump
+
+
+╔══════════════════════════════════════════════════════════════════════╗
+║                        PARTS LIST                                    ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+□ ESP32 Development Board (x1)
+□ DS18B20 Temperature Sensors (x3)
+   - 1x bare sensor for air
+   - 2x waterproof probes for water
+□ 4.7kΩ Resistor (x1)
+□ Relay Module 5V (x1) - rated for pump current
+□ Waterproof Enclosure
+□ Micro-USB cable (for programming)
+□ 5V Power Supply for ESP32
+□ Jumper wires / Terminal blocks
+□ Heat shrink tubing
+□ Cable glands (waterproof)

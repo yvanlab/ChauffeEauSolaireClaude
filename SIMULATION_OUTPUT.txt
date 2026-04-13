@@ -1,0 +1,212 @@
+============================================================
+  ESP32 SOLAR SPA CONTROLLER - SIMULATED OUTPUT
+============================================================
+
+This is what you would see in the Serial Monitor when the
+ESP32 is running with your solar spa heating controller code.
+
+============================================================
+
++======================================================+
+|                                                      |
+|        CHAUFFAGE SOLAIRE SPA - ESP32                |
+|        Solar Spa Heating Controller                 |
+|                                                      |
+|        Version: 2.2 (JSON + mDNS + Logging)         |
+|        Build: Apr 13 2026 18:00:00                  |
+|                                                      |
++======================================================+
+
+
+[Initializing Configuration]
+[00:00:00] INFO  Loading configuration from JSON files
+[00:00:00] OK    Temperature configuration loaded from JSON
+[00:00:00] OK    WiFi configuration loaded from JSON
+[00:00:00] OK    Configuration loaded successfully
+
++========================================+
+|      Current Configuration             |
++========================================+
+
+[Temperature Parameters]
+  File: /temp_config.json
+  Temp difference threshold: 5.0degC
+  Min panel temp: 25.0degC
+  Max spa temp: 40.0degC
+
+[WiFi Settings]
+  File: /wifi_config.json
+  SSID: MyHomeNetwork
+  Password: ****
+  Hostname: chauffeSpa.local
+
+[Pump State]
+  Manual override: NO
+  Pump state: OFF
+========================================
+
+
+[Initializing Temperature Sensors]
+[00:00:01] INFO  Initializing DS18B20 temperature sensors
+[00:00:01] INFO  Found 3 DS18B20 sensors on bus
+
+Sensor addresses detected:
+  [0] Air sensor:   28 AA 4F 23 17 13 01 52
+  [1] Spa sensor:   28 FF 64 1E 81 16 03 8C
+  [2] Panel sensor: 28 3C B8 14 00 00 00 9F
+
+[00:00:02] OK    All 3 sensors initialized successfully
+
+
+[Connecting to WiFi]
+SSID: MyHomeNetwork
+Hostname: chauffeSpa.local
+[00:00:02] INFO  Connecting to WiFi: MyHomeNetwork
+Connecting.......
+[00:00:04] OK    WiFi connected - IP: 192.168.1.100
+[00:00:04] INFO  Signal strength: -45 dBm
+  IP address: 192.168.1.100
+  Signal strength: -45 dBm
+[00:00:05] OK    mDNS started: http://chauffeSpa.local
+  Service added: _http._tcp
+
+[Initializing Web Server]
+[00:00:05] OK    LittleFS mounted successfully
+[00:00:05] OK    HTTP server started on port 80
+
++========================================+
+|     SYSTEM READY                       |
++========================================+
+Web interface: http://192.168.1.100
+           or: http://chauffeSpa.local
+========================================
+
+
+============================================================
+NORMAL OPERATION (monitoring every 2 seconds)
+============================================================
+
+Air: 22.0degC | Spa: 30.0degC | Panel: 35.0degC | Diff:  5.0degC | Pump: OFF | Mode: AUTO
+Air: 22.3degC | Spa: 30.1degC | Panel: 35.8degC | Diff:  5.7degC | Pump: OFF | Mode: AUTO
+[00:00:08] OK    Pump ACTIVATED (Panel 36.2degC > Spa 30.1degC + 5.0degC threshold)
+Air: 22.5degC | Spa: 30.2degC | Panel: 36.2degC | Diff:  6.0degC | Pump: ON  | Mode: AUTO
+Air: 22.8degC | Spa: 30.3degC | Panel: 36.5degC | Diff:  6.2degC | Pump: ON  | Mode: AUTO
+Air: 23.0degC | Spa: 30.5degC | Panel: 37.0degC | Diff:  6.5degC | Pump: ON  | Mode: AUTO
+Air: 23.2degC | Spa: 30.7degC | Panel: 37.5degC | Diff:  6.8degC | Pump: ON  | Mode: AUTO
+Air: 23.5degC | Spa: 30.8degC | Panel: 38.0degC | Diff:  7.2degC | Pump: ON  | Mode: AUTO
+Air: 23.7degC | Spa: 31.0degC | Panel: 38.5degC | Diff:  7.5degC | Pump: ON  | Mode: AUTO
+Air: 24.0degC | Spa: 31.2degC | Panel: 39.0degC | Diff:  7.8degC | Pump: ON  | Mode: AUTO
+
+[User changes configuration via web interface]
+[00:00:30] INFO  Temperature parameters updated: diff=7.0, min=30.0, max=38.0
+[00:00:30] OK    Temperature parameters saved
+
+Air: 24.2degC | Spa: 31.5degC | Panel: 39.2degC | Diff:  7.7degC | Pump: ON  | Mode: AUTO
+Air: 24.5degC | Spa: 31.7degC | Panel: 38.5degC | Diff:  6.8degC | Pump: OFF | Mode: AUTO
+[00:00:34] INFO  Pump DEACTIVATED (Temp diff: 6.8degC)
+Air: 24.7degC | Spa: 31.8degC | Panel: 37.8degC | Diff:  6.0degC | Pump: OFF | Mode: AUTO
+Air: 25.0degC | Spa: 32.0degC | Panel: 37.2degC | Diff:  5.2degC | Pump: OFF | Mode: AUTO
+
+[User activates manual mode]
+[00:00:50] INFO  Pump: MANUAL ON
+[00:00:50] OK    Pump state saved
+
+Air: 25.2degC | Spa: 32.2degC | Panel: 36.5degC | Diff:  4.3degC | Pump: ON  | Mode: MANUAL
+Air: 25.5degC | Spa: 32.5degC | Panel: 36.0degC | Diff:  3.5degC | Pump: ON  | Mode: MANUAL
+Air: 25.7degC | Spa: 32.7degC | Panel: 35.5degC | Diff:  2.8degC | Pump: ON  | Mode: MANUAL
+
+[User returns to automatic mode]
+[00:01:10] INFO  Pump: AUTO MODE
+[00:01:10] OK    Pump state saved
+
+Air: 26.0degC | Spa: 33.0degC | Panel: 35.0degC | Diff:  2.0degC | Pump: OFF | Mode: AUTO
+[00:01:12] INFO  Pump DEACTIVATED (Temp diff: 2.0degC)
+Air: 26.2degC | Spa: 33.2degC | Panel: 34.8degC | Diff:  1.6degC | Pump: OFF | Mode: AUTO
+
+[Sensor issue detected]
+[00:01:40] WARN  Spa sensor disconnected!
+
+Air: 26.5degC | Spa:  0.0degC | Panel: 34.5degC | Diff: 34.5degC | Pump: OFF | Mode: AUTO
+Air: 26.7degC | Spa:  0.0degC | Panel: 34.2degC | Diff: 34.2degC | Pump: OFF | Mode: AUTO
+
+[Sensor reconnected]
+[00:01:42] OK    Spa sensor reconnected
+
+Air: 27.0degC | Spa: 33.5degC | Panel: 34.0degC | Diff:  0.5degC | Pump: OFF | Mode: AUTO
+Air: 27.2degC | Spa: 33.7degC | Panel: 35.2degC | Diff:  1.5degC | Pump: OFF | Mode: AUTO
+
+[Safety event]
+Air: 27.5degC | Spa: 39.8degC | Panel: 48.0degC | Diff:  8.2degC | Pump: ON  | Mode: AUTO
+[00:02:15] ERROR SAFETY: Spa temp 40.2degC reached maximum (40.0degC) - pump forced OFF
+Air: 27.7degC | Spa: 40.2degC | Panel: 48.5degC | Diff:  8.3degC | Pump: OFF | Mode: AUTO
+Air: 28.0degC | Spa: 40.1degC | Panel: 48.2degC | Diff:  8.1degC | Pump: OFF | Mode: AUTO
+Air: 28.2degC | Spa: 39.9degC | Panel: 47.8degC | Diff:  7.9degC | Pump: OFF | Mode: AUTO
+[00:02:22] OK    Pump ACTIVATED (Panel 47.5degC > Spa 39.7degC + 7.0degC threshold)
+Air: 28.5degC | Spa: 39.7degC | Panel: 47.5degC | Diff:  7.8degC | Pump: ON  | Mode: AUTO
+
+============================================================
+
+KEY LOG LEVELS:
+
+[i]  INFO  = General information (blue in web interface)
+[OK] OK    = Successful operations (green in web interface)
+[!]  WARN  = Warnings (yellow in web interface)
+[X]  ERROR = Errors & safety events (red in web interface)
+
+============================================================
+
+WEB INTERFACE - LOGS SECTION
+
+At the bottom of the web page (http://chauffeSpa.local),
+you would see a section titled "Journaux systeme" with:
+
++------------------------------------------------------+
+|  Journaux systeme     [Auto-scroll] [Clear] [Refresh]
++------------------------------------------------------+
+| [OK] 00:00:00  OK    Configuration loaded           |
+| [OK] 00:00:02  OK    All 3 sensors initialized      |
+| [OK] 00:00:04  OK    WiFi connected - IP: 192...    |
+| [OK] 00:00:05  OK    HTTP server started on port 80 |
+| [OK] 00:00:08  OK    Pump ACTIVATED (Panel 36.2...) |
+| [i]  00:00:30  INFO  Temperature parameters updated |
+| [OK] 00:00:30  OK    Temperature parameters saved   |
+| [i]  00:00:34  INFO  Pump DEACTIVATED (Temp diff...)  |
+| [i]  00:00:50  INFO  Pump: MANUAL ON                |
+| [OK] 00:00:50  OK    Pump state saved               |
+| [i]  00:01:10  INFO  Pump: AUTO MODE                |
+| [!]  00:01:40  WARN  Spa sensor disconnected!       |
+| [OK] 00:01:42  OK    Spa sensor reconnected         |
+| [X]  00:02:15  ERROR SAFETY: Spa temp 40.2degC...   |
+| [OK] 00:02:22  OK    Pump ACTIVATED (Panel 47.5...) |
++------------------------------------------------------+
+
+Color coding in browser:
+- INFO logs  = Light blue background
+- OK logs    = Light green background
+- WARN logs  = Light yellow background
+- ERROR logs = Light red background
+
+Auto-refresh: Updates every 3 seconds
+Auto-scroll: Automatically scrolls to newest log
+Clear button: Removes all logs (requires confirmation)
+
+============================================================
+NOTES:
+
+1. All logs are visible in BOTH serial monitor AND web interface
+2. Last 100 log entries are kept in memory
+3. Logs are cleared on ESP32 restart (not persistent)
+4. Serial monitor shows real-time output
+5. Web interface auto-refreshes every 3 seconds
+
+============================================================
+
+TO RUN THIS ON YOUR ESP32:
+
+1. Edit data/wifi_config.json with your WiFi credentials
+2. Run: pio run --target upload
+3. Run: pio run --target uploadfs
+4. Connect serial monitor: pio device monitor
+5. Access web: http://chauffeSpa.local
+
+============================================================

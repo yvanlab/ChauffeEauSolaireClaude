@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chauffage Solaire Spa</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2em;
+      margin-bottom: 10px;
+    }
+    .content {
+      padding: 30px;
+    }
+    .temp-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .temp-card {
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      padding: 25px;
+      border-radius: 15px;
+      text-align: center;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.3s;
+    }
+    .temp-card:hover {
+      transform: translateY(-5px);
+    }
+    .temp-label {
+      font-size: 0.9em;
+      color: #666;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .temp-value {
+      font-size: 2.5em;
+      font-weight: bold;
+      color: #333;
+    }
+    .pump-status {
+      background: #f8f9fa;
+      padding: 25px;
+      border-radius: 15px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .pump-indicator {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-right: 10px;
+      animation: pulse 2s infinite;
+    }
+    .pump-on { background: #28a745; }
+    .pump-off { background: #dc3545; animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+    .section h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 1.5em;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 600;
+    }
+    input[type="number"], input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 1em;
+      transition: border-color 0.3s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    .btn-success {
+      background: #28a745;
+      color: white;
+    }
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+    .btn-warning {
+      background: #ffc107;
+      color: #333;
+    }
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+    .btn-success:hover, .btn-danger:hover, .btn-warning:hover, .btn-secondary:hover {
+      transform: translateY(-2px);
+      opacity: 0.9;
+    }
+    .message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+    }
+    .message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .info-box {
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+      padding: 15px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab {
+      padding: 15px 25px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 1em;
+      color: #666;
+      transition: all 0.3s;
+    }
+    .tab.active {
+      color: #667eea;
+      border-bottom: 3px solid #667eea;
+      font-weight: 600;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    small {
+      display: block;
+      margin-top: 5px;
+      color: #666;
+    }
+    .logs-section {
+      margin-top: 40px;
+      background: #f8f9fa;
+      border-radius: 15px;
+      padding: 25px;
+    }
+    .logs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .logs-container {
+      background: #fff;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      height: 400px;
+      overflow-y: auto;
+      padding: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+    .log-entry {
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .log-entry.INFO {
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+    }
+    .log-entry.WARN {
+      background: #fff3cd;
+      border-left: 4px solid #ffc107;
+    }
+    .log-entry.ERROR {
+      background: #f8d7da;
+      border-left: 4px solid #dc3545;
+    }
+    .log-entry.OK {
+      background: #d4edda;
+      border-left: 4px solid #28a745;
+    }
+    .log-time {
+      color: #666;
+      font-weight: bold;
+      min-width: 80px;
+    }
+    .log-level {
+      min-width: 50px;
+      font-weight: bold;
+    }
+    .log-level.INFO { color: #2196F3; }
+    .log-level.WARN { color: #ff9800; }
+    .log-level.ERROR { color: #dc3545; }
+    .log-level.OK { color: #28a745; }
+    .log-message {
+      flex: 1;
+      color: #333;
+      word-break: break-word;
+    }
+    .log-icon {
+      font-size: 1.2em;
+    }
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 0.9em;
+    }
+    .logs-empty {
+      text-align: center;
+      color: #999;
+      padding: 40px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>☀️ Chauffage Solaire Spa</h1>
+      <p>Contrôle automatique de température</p>
+    </div>
+
+    <div class="content">
+      <!-- Temperature Display -->
+      <div class="section">
+        <h2>🌡️ Températures en temps réel</h2>
+        <div class="temp-grid">
+          <div class="temp-card">
+            <div class="temp-label">Air</div>
+            <div class="temp-value" id="airTemp">--</div>
+          </div>
+          <div class="temp-card">
+            <div class="temp-label">Spa</div>
+            <div class="temp-value" id="spaTemp">--</div>
+          </div>
+          <div class="temp-card">
+            <div class="temp-label">Panneaux</div>
+            <div class="temp-value" id="panelTemp">--</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pump Status -->
+      <div class="pump-status">
+        <h3>
+          <span class="pump-indicator pump-off" id="pumpIndicator"></span>
+          Pompe: <span id="pumpStatus">Arrêtée</span>
+        </h3>
+        <p id="pumpMode" style="margin-top: 10px; color: #666;">Mode: Automatique</p>
+      </div>
+
+      <!-- Manual Control -->
+      <div class="section">
+        <h2>🎮 Contrôle manuel</h2>
+        <div class="info-box">
+          En mode manuel, la pompe ignore les paramètres automatiques.
+        </div>
+        <button class="btn btn-success" onclick="setPump('on')">✅ Marche forcée</button>
+        <button class="btn btn-danger" onclick="setPump('off')">❌ Arrêt forcé</button>
+        <button class="btn btn-warning" onclick="setPump('auto')">🔄 Mode automatique</button>
+      </div>
+
+      <!-- Tabbed Configuration -->
+      <div class="section">
+        <h2>⚙️ Configuration</h2>
+
+        <div class="tabs">
+          <button class="tab active" onclick="showTab(event, 'temp')">Températures</button>
+          <button class="tab" onclick="showTab(event, 'wifi')">WiFi</button>
+          <button class="tab" onclick="showTab(event, 'system')">Système</button>
+        </div>
+
+        <!-- Temperature Configuration Tab -->
+        <div class="tab-content active" id="tab-temp">
+          <form id="configForm" onsubmit="saveConfig(event)">
+            <div class="form-group">
+              <label for="tempDiff">Différence de température pour activation (°C):</label>
+              <input type="number" id="tempDiff" step="0.5" min="0" max="20" required>
+              <small>La pompe démarre si Panel > Spa + cette valeur</small>
+            </div>
+
+            <div class="form-group">
+              <label for="minPanel">Température minimum des panneaux (°C):</label>
+              <input type="number" id="minPanel" step="0.5" min="0" max="60" required>
+              <small>Les panneaux doivent être au moins à cette température</small>
+            </div>
+
+            <div class="form-group">
+              <label for="maxSpa">Température maximum du spa (°C):</label>
+              <input type="number" id="maxSpa" step="0.5" min="0" max="50" required>
+              <small>Limite de sécurité - la pompe s'arrête au-dessus</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            <div class="message success" id="configMessage">Paramètres enregistrés!</div>
+          </form>
+        </div>
+
+        <!-- WiFi Configuration Tab -->
+        <div class="tab-content" id="tab-wifi">
+          <div class="info-box">
+            ⚠️ Après modification, l'ESP32 doit être redémarré pour appliquer les nouveaux paramètres WiFi.
+          </div>
+          <form id="wifiForm" onsubmit="saveWiFi(event)">
+            <div class="form-group">
+              <label for="wifiSSID">SSID (Nom du réseau):</label>
+              <input type="text" id="wifiSSID" maxlength="63" required>
+            </div>
+
+            <div class="form-group">
+              <label for="wifiPassword">Mot de passe:</label>
+              <input type="password" id="wifiPassword" maxlength="63" required>
+              <small>Laissez vide pour ne pas modifier</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary">💾 Enregistrer WiFi</button>
+            <div class="message success" id="wifiMessage">WiFi enregistré - redémarrage requis</div>
+          </form>
+        </div>
+
+        <!-- System Configuration Tab -->
+        <div class="tab-content" id="tab-system">
+          <div class="info-box">
+            Actions système avancées - utiliser avec précaution.
+          </div>
+
+          <div class="form-group">
+            <label>Réinitialiser la configuration:</label>
+            <small>Restaure tous les paramètres aux valeurs par défaut</small>
+            <button class="btn btn-danger" onclick="resetConfig()" style="margin-top: 10px;">
+              🔄 Réinitialiser
+            </button>
+          </div>
+
+          <div class="form-group" style="margin-top: 30px;">
+            <label>Redémarrer l'ESP32:</label>
+            <small>Redémarre le système (utile après changement WiFi)</small>
+            <button class="btn btn-secondary" onclick="restartESP()" style="margin-top: 10px;">
+              🔌 Redémarrer
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Section -->
+      <div class="logs-section">
+        <div class="logs-header">
+          <h2 style="margin: 0;">📋 Journaux système</h2>
+          <div>
+            <button class="btn btn-secondary btn-small" onclick="toggleAutoScroll()">
+              <span id="autoscrollIcon">📌</span> Auto-scroll
+            </button>
+            <button class="btn btn-warning btn-small" onclick="clearLogs()">🗑️ Effacer</button>
+            <button class="btn btn-primary btn-small" onclick="refreshLogs()">🔄 Actualiser</button>
+          </div>
+        </div>
+        <div class="logs-container" id="logsContainer">
+          <div class="logs-empty">Chargement des journaux...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Update data every 2 seconds
+    setInterval(updateData, 2000);
+    updateData();
+
+    function updateData() {
+      fetch('/data')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('airTemp').textContent = data.airTemp.toFixed(1) + '°C';
+          document.getElementById('spaTemp').textContent = data.spaTemp.toFixed(1) + '°C';
+          document.getElementById('panelTemp').textContent = data.panelTemp.toFixed(1) + '°C';
+
+          const pumpIndicator = document.getElementById('pumpIndicator');
+          const pumpStatus = document.getElementById('pumpStatus');
+          const pumpMode = document.getElementById('pumpMode');
+
+          if (data.pumpState) {
+            pumpIndicator.className = 'pump-indicator pump-on';
+            pumpStatus.textContent = 'En marche';
+          } else {
+            pumpIndicator.className = 'pump-indicator pump-off';
+            pumpStatus.textContent = 'Arrêtée';
+          }
+
+          pumpMode.textContent = 'Mode: ' + (data.manualOverride ? 'Manuel' : 'Automatique');
+
+          document.getElementById('tempDiff').value = data.tempDiff;
+          document.getElementById('minPanel').value = data.minPanel;
+          document.getElementById('maxSpa').value = data.maxSpa;
+        })
+        .catch(error => console.error('Error fetching data:', error));
+    }
+
+    function showTab(event, tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById('tab-' + tabName).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    function saveConfig(event) {
+      event.preventDefault();
+
+      const formData = new FormData();
+      formData.append('tempDiff', document.getElementById('tempDiff').value);
+      formData.append('minPanel', document.getElementById('minPanel').value);
+      formData.append('maxSpa', document.getElementById('maxSpa').value);
+
+      fetch('/config', {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.text())
+        .then(data => {
+          showMessage('configMessage');
+        })
+        .catch(error => console.error('Error saving config:', error));
+    }
+
+    function saveWiFi(event) {
+      event.preventDefault();
+
+      const formData = new FormData();
+      formData.append('ssid', document.getElementById('wifiSSID').value);
+      const password = document.getElementById('wifiPassword').value;
+      if (password) {
+        formData.append('password', password);
+      }
+
+      fetch('/wifi', {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.text())
+        .then(data => {
+          showMessage('wifiMessage');
+        })
+        .catch(error => console.error('Error saving WiFi:', error));
+    }
+
+    function setPump(mode) {
+      const formData = new FormData();
+      formData.append('manual', mode);
+
+      fetch('/pump', {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.text())
+        .then(data => {
+          updateData();
+        })
+        .catch(error => console.error('Error setting pump:', error));
+    }
+
+    function resetConfig() {
+      if (confirm('Êtes-vous sûr de vouloir réinitialiser la configuration ?')) {
+        fetch('/reset', {
+          method: 'POST'
+        })
+          .then(response => response.text())
+          .then(data => {
+            alert('Configuration réinitialisée. Redémarrage recommandé.');
+            updateData();
+          })
+          .catch(error => console.error('Error resetting config:', error));
+      }
+    }
+
+    function restartESP() {
+      if (confirm('Redémarrer l\'ESP32 maintenant ?')) {
+        alert('Redémarrage en cours... Patientez 10 secondes puis rechargez la page.');
+        fetch('/restart', { method: 'POST' });
+      }
+    }
+
+    function showMessage(messageId) {
+      const message = document.getElementById(messageId);
+      message.style.display = 'block';
+      setTimeout(() => message.style.display = 'none', 3000);
+    }
+
+    // Logs management
+    let autoScroll = true;
+
+    function updateLogs() {
+      fetch('/logs')
+        .then(response => response.json())
+        .then(logs => {
+          const container = document.getElementById('logsContainer');
+
+          if (logs.length === 0) {
+            container.innerHTML = '<div class="logs-empty">Aucun journal disponible</div>';
+            return;
+          }
+
+          container.innerHTML = logs.map(log => `
+            <div class="log-entry ${log.level}">
+              <span class="log-icon">${log.icon}</span>
+              <span class="log-time">${log.time}</span>
+              <span class="log-level ${log.level}">${log.level}</span>
+              <span class="log-message">${log.message}</span>
+            </div>
+          `).join('');
+
+          // Auto-scroll to bottom if enabled
+          if (autoScroll) {
+            container.scrollTop = container.scrollHeight;
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching logs:', error);
+          document.getElementById('logsContainer').innerHTML =
+            '<div class="logs-empty">Erreur de chargement des journaux</div>';
+        });
+    }
+
+    function refreshLogs() {
+      updateLogs();
+    }
+
+    function clearLogs() {
+      if (confirm('Effacer tous les journaux ?')) {
+        fetch('/logs/clear', {
+          method: 'POST'
+        })
+          .then(response => response.text())
+          .then(data => {
+            updateLogs();
+          })
+          .catch(error => console.error('Error clearing logs:', error));
+      }
+    }
+
+    function toggleAutoScroll() {
+      autoScroll = !autoScroll;
+      const icon = document.getElementById('autoscrollIcon');
+      icon.textContent = autoScroll ? '📌' : '📍';
+    }
+
+    // Update logs every 3 seconds
+    setInterval(updateLogs, 3000);
+    // Initial load
+    setTimeout(updateLogs, 1000);
+  </script>
+</body>
+</html>

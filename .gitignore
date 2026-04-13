@@ -1,0 +1,32 @@
+# PlatformIO
+.pio/
+.vscode/
+.clang_complete
+.gcc-flags.json
+
+# Build artifacts
+*.o
+*.elf
+*.bin
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+simulation_logs.json
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive data (user should configure locally)
+data/wifi_config.json
+
+# Logs
+*.log

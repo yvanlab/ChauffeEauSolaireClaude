@@ -3,9 +3,15 @@
 #include <ESPmDNS.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <LittleFS.h>
 #include "config.h"
 #include "webserver.h"
 #include "logger.h"
+
+// Version information
+const char* FIRMWARE_VERSION = "2.4";
+const char* BUILD_DATE = __DATE__;
+const char* BUILD_TIME = __TIME__;
 
 // Pin definitions
 #define ONE_WIRE_BUS 4    // GPIO4 for DS18B20 sensors
@@ -48,6 +54,13 @@ void setup() {
   // Setup relay pin
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);  // Pump off initially
+
+  // Mount LittleFS first (required for loading config files)
+  if (!LittleFS.begin(true)) {
+    logger.error("LittleFS mount failed!");
+  } else {
+    logger.success("LittleFS mounted successfully");
+  }
 
   // Load configuration from JSON files
   Serial.println("\n[Initializing Configuration]");
@@ -119,6 +132,8 @@ void loop() {
     // Update web server with pump state
     if (webServer) {
       webServer->updatePumpState(pumpState);
+      // Record temperature history (every minute)
+      webServer->recordHistory();
     }
 
     // Print status to serial
@@ -182,6 +197,16 @@ void readTemperatures() {
       sensorData.panelTemp = 0.0;
       logger.warning("Panel sensor disconnected!");
     }
+  } else if (sensorCount > 0) {
+    // Read whatever sensors are available for testing
+    DeviceAddress tempAddr;
+    for (int i = 0; i < sensorCount; i++) {
+      sensors.getAddress(tempAddr, i);
+      float temp = sensors.getTempC(tempAddr);
+      if (i == 0) sensorData.airTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
+      if (i == 1) sensorData.spaTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
+      if (i == 2) sensorData.panelTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
+    }
   }
 }
 
@@ -202,8 +227,11 @@ void controlPump() {
   }
 
   // Apply hysteresis: once pump is on, require temperature difference
-  // to drop below (threshold - 1) before turning off
-  if (pumpState && tempDiff >= (config.temp.tempDifferenceThreshold - 1.0)) {
+  // to drop below (threshold - 1) before turning off.
+  // Panel must still be above minPanelTemp to avoid circulating cold water.
+  if (pumpState &&
+      sensorData.panelTemp >= config.temp.minPanelTemp &&
+      tempDiff >= (config.temp.tempDifferenceThreshold - 1.0)) {
     shouldActivate = true;
   }
 
@@ -286,8 +314,8 @@ void printWelcome() {
   Serial.println("║         CHAUFFAGE SOLAIRE SPA - ESP32                 ║");
   Serial.println("║         Solar Spa Heating Controller                  ║");
   Serial.println("║                                                        ║");
-  Serial.println("║         Version: 2.1 (JSON Config + mDNS)             ║");
-  Serial.println("║         Build: " __DATE__ " " __TIME__ "              ║");
+  Serial.printf("║         Version: %-35s║\n", FIRMWARE_VERSION);
+  Serial.printf("║         Build: %s %s              ║\n", BUILD_DATE, BUILD_TIME);
   Serial.println("║                                                        ║");
   Serial.println("╚════════════════════════════════════════════════════════╝");
   Serial.println();

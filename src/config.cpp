@@ -5,6 +5,7 @@
 
 const char* ConfigManager::TEMP_CONFIG_FILE = "/temp_config.json";
 const char* ConfigManager::WIFI_CONFIG_FILE = "/wifi_config.json";
+const char* ConfigManager::SENSOR_CONFIG_FILE = "/sensor_config.json";
 
 ConfigManager::ConfigManager() {
 }
@@ -82,9 +83,58 @@ bool ConfigManager::loadWiFiConfig(WiFiConfig& config) {
   return true;
 }
 
+bool ConfigManager::loadSensorMapping(SensorMapping& config) {
+  if (!LittleFS.exists(SENSOR_CONFIG_FILE)) {
+    logger.warningf("Sensor mapping file not found: %s", SENSOR_CONFIG_FILE);
+    logger.info("Using default sensor order (0=air, 1=spa, 2=panel)");
+    return false;
+  }
+
+  File file = LittleFS.open(SENSOR_CONFIG_FILE, "r");
+  if (!file) {
+    logger.error("Failed to open sensor mapping file");
+    return false;
+  }
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, file);
+  file.close();
+
+  if (error) {
+    logger.errorf("Failed to parse sensor mapping: %s", error.c_str());
+    return false;
+  }
+
+  // Load useMapping flag
+  config.useMapping = doc["useMapping"] | false;
+
+  if (config.useMapping) {
+    // Load sensor addresses from JSON (stored as hex string arrays)
+    JsonArray airAddr = doc["airSensor"];
+    JsonArray spaAddr = doc["spaSensor"];
+    JsonArray panelAddr = doc["panelSensor"];
+
+    if (airAddr.size() == 8 && spaAddr.size() == 8 && panelAddr.size() == 8) {
+      for (int i = 0; i < 8; i++) {
+        config.airSensorAddress[i] = airAddr[i];
+        config.spaSensorAddress[i] = spaAddr[i];
+        config.panelSensorAddress[i] = panelAddr[i];
+      }
+      logger.success("Sensor mapping loaded from JSON");
+    } else {
+      logger.error("Invalid sensor addresses in config");
+      config.useMapping = false;
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ConfigManager::loadAll(SpaConfig& config) {
   bool tempOk = loadTempConfig(config.temp);
   bool wifiOk = loadWiFiConfig(config.wifi);
+  bool sensorOk = loadSensorMapping(config.sensors);
   return tempOk && wifiOk;
 }
 
@@ -199,6 +249,39 @@ bool ConfigManager::savePumpState(const TempConfig& config) {
 
   file.close();
   logger.success("Pump state saved");
+  return true;
+}
+
+bool ConfigManager::saveSensorMapping(const SensorMapping& config) {
+  JsonDocument doc;
+
+  doc["useMapping"] = config.useMapping;
+
+  // Save sensor addresses as arrays
+  JsonArray airAddr = doc["airSensor"].to<JsonArray>();
+  JsonArray spaAddr = doc["spaSensor"].to<JsonArray>();
+  JsonArray panelAddr = doc["panelSensor"].to<JsonArray>();
+
+  for (int i = 0; i < 8; i++) {
+    airAddr.add(config.airSensorAddress[i]);
+    spaAddr.add(config.spaSensorAddress[i]);
+    panelAddr.add(config.panelSensorAddress[i]);
+  }
+
+  File file = LittleFS.open(SENSOR_CONFIG_FILE, "w");
+  if (!file) {
+    Serial.println("✗ Failed to open sensor mapping for writing");
+    return false;
+  }
+
+  if (serializeJson(doc, file) == 0) {
+    Serial.println("✗ Failed to write sensor mapping");
+    file.close();
+    return false;
+  }
+
+  file.close();
+  logger.success("Sensor mapping saved to JSON");
   return true;
 }
 

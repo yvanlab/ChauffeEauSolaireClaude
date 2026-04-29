@@ -3,6 +3,22 @@
 
 #include <Arduino.h>
 
+// Sensor configuration structure
+struct SensorMapping {
+  uint8_t airSensorAddress[8];
+  uint8_t spaSensorAddress[8];
+  uint8_t panelSensorAddress[8];
+  bool useMapping;  // If false, use default bus index (0=air, 1=spa, 2=panel)
+
+  // Constructor with default values
+  SensorMapping() {
+    memset(airSensorAddress, 0, 8);
+    memset(spaSensorAddress, 0, 8);
+    memset(panelSensorAddress, 0, 8);
+    useMapping = false;
+  }
+};
+
 // Temperature configuration structure
 struct TempConfig {
   float tempDifferenceThreshold;  // Degrees C difference to activate pump
@@ -39,12 +55,14 @@ struct WiFiConfig {
 struct SpaConfig {
   TempConfig temp;
   WiFiConfig wifi;
+  SensorMapping sensors;
 };
 
 class ConfigManager {
 private:
   static const char* TEMP_CONFIG_FILE;
   static const char* WIFI_CONFIG_FILE;
+  static const char* SENSOR_CONFIG_FILE;
 
 public:
   ConfigManager();
@@ -72,6 +90,12 @@ public:
 
   // Save only pump state
   bool savePumpState(const TempConfig& config);
+
+  // Save sensor mapping configuration to JSON file
+  bool saveSensorMapping(const SensorMapping& config);
+
+  // Load sensor mapping configuration from JSON file
+  bool loadSensorMapping(SensorMapping& config);
 
   // Reset to default values
   bool reset();

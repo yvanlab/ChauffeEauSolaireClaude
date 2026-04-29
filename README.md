@@ -317,7 +317,7 @@ Les mêmes événements sont visibles dans la section **"Journaux système"** en
 ## Développement futur
 
 Améliorations possibles:
-- [ ] Graphiques historiques des températures (stockage sur carte SD)
+- [x] ~~Graphiques historiques des températures~~ ✅ **Implémenté en v2.4**
 - [ ] Notifications push/email en cas d'anomalie
 - [ ] Intégration domotique (MQTT, Home Assistant)
 - [ ] Mode économie d'énergie avec deep sleep
@@ -338,6 +338,30 @@ Ce projet est fourni "tel quel" sans garantie. Utilisez-le à vos propres risque
 
 ---
 
-**Version**: 2.0  
-**Date**: 2026-04-13  
+**Version**: 2.4  
+**Date**: 2026-04-20  
 **Auteur**: Claude + ylabrit
+
+## Nouveautés Version 2.4
+
+📊 **Graphique des températures 24h**
+- Nouvel onglet "Graphique 24h" dans l'interface web
+- Visualisation interactive de l'évolution des 3 températures
+- Historique de 24 heures (1 point par minute = 1440 points max)
+- Affichage en heures réelles (08:00, 12:00, 16:00...)
+- Rafraîchissement automatique toutes les 30 secondes
+- Stockage circulaire en mémoire (pas de persistence après redémarrage)
+
+🧠 **Monitoring RAM en temps réel**
+- Affichage de l'utilisation de la mémoire RAM dans l'onglet Système
+- Barre de progression visuelle avec code couleur
+- Statistiques détaillées (libre, utilisé, minimum, fragmentation)
+- Taille du buffer historique affichée (23 KB)
+- Mise à jour automatique toutes les 10 secondes
+
+🖥️ **Simulateur Web amélioré**
+- Double-cliquez sur `launch_simulator.bat` pour lancer le simulateur
+- Historique 24h pré-généré avec cycles réalistes
+- Testez l'interface complète sans matériel ESP32
+
+Voir `CHANGELOG_GRAPH.md` et `RAM_MONITORING.md` pour les détails complets.

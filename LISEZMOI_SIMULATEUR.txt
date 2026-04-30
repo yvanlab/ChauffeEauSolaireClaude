@@ -1,0 +1,89 @@
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║     SIMULATEUR WEB - ESP32 Spa Controller                   ║
+║     Testez l'interface sans le matériel !                   ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+📋 LANCEMENT RAPIDE
+═══════════════════
+
+  1. Double-cliquez sur:  launch_simulator.bat
+
+  2. Ouvrez votre navigateur à:  http://localhost:8080
+
+  3. Pour arrêter: Appuyez sur Ctrl+C dans le terminal
+
+
+🎯 FONCTIONNALITÉS
+═══════════════════
+
+  ✅ Températures simulées en temps réel
+  ✅ Contrôle de la pompe (Manuel/Auto)
+  ✅ Configuration des paramètres
+  ✅ Scanner WiFi (réseaux simulés)
+  ✅ Journaux système
+  ✅ Graphique 24h avec données réalistes
+  ✅ Informations système
+
+
+📊 GRAPHIQUE 24H
+═══════════════════
+
+  Le simulateur génère automatiquement un historique réaliste
+  de 24 heures avec des cycles journaliers:
+
+  • Air:      18-28°C (suit le cycle jour/nuit)
+  • Spa:      28-35°C (se réchauffe l'après-midi)
+  • Panneaux: 15-50°C (pic vers 13h, suit le soleil)
+
+
+🔧 PRÉREQUIS
+═══════════════════
+
+  • Python 3.x installé
+  • Aucune bibliothèque externe requise
+
+
+📝 NOTES
+═══════════════════
+
+  • Les modifications ne sont PAS sauvegardées
+  • Redémarrer le simulateur = tout recommence à zéro
+  • Parfait pour tester l'interface avant le déploiement
+  • Idéal pour faire des démonstrations
+
+
+🐛 EN CAS DE PROBLÈME
+═══════════════════
+
+  Port déjà utilisé ?
+    → Modifiez le port dans web_simulator.py (ligne finale)
+    → run_simulator(8081)  # Changez 8080 en 8081
+
+  Python non trouvé ?
+    → Installez Python: https://www.python.org/downloads/
+    → Cochez "Add Python to PATH" lors de l'installation
+
+  Page ne charge pas ?
+    → Vérifiez que le terminal montre "Server running"
+    → Essayez http://127.0.0.1:8080
+    → Videz le cache navigateur (Ctrl+F5)
+
+
+📚 DOCUMENTATION COMPLÈTE
+═══════════════════
+
+  Pour plus de détails, consultez:
+    • SIMULATOR.md       - Guide complet du simulateur
+    • README.md          - Documentation générale
+    • CHANGELOG_GRAPH.md - Nouveauté graphique v2.4
+
+
+═══════════════════════════════════════════════════════════════
+
+Version: 2.4
+Date: 2026-04-20
+Auteur: Claude + ylabrit
+
+═══════════════════════════════════════════════════════════════

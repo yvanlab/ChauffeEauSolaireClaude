@@ -7,15 +7,21 @@
 #include "config.h"
 #include "webserver.h"
 #include "logger.h"
-
+/*
+GPIO23	Status LED
+GPIO16	Relay #1
+GPIO13	Relay #2
+GPIO25	Relay #3
+GPIO26	Relay #4
+*/
 // Version information
-const char* FIRMWARE_VERSION = "2.4";
+const char* FIRMWARE_VERSION = "2.5";
 const char* BUILD_DATE = __DATE__;
 const char* BUILD_TIME = __TIME__;
 
 // Pin definitions
 #define ONE_WIRE_BUS 4    // GPIO4 for DS18B20 sensors
-#define RELAY_PIN 14      // GPIO14 for pump relay
+#define RELAY_PIN 16      // GPIO16 for pump relay
 
 // Temperature sensors
 OneWire oneWire(ONE_WIRE_BUS);
@@ -42,6 +48,7 @@ WebServerManager* webServer = nullptr;
 void setupSensors();
 void readTemperatures();
 void controlPump();
+void setRelay(bool on);
 void connectWiFi();
 void printWelcome();
 
@@ -51,10 +58,7 @@ void setup() {
 
   printWelcome();
 
-  // Setup relay pin
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // Pump off initially
-
+  
   // Mount LittleFS first (required for loading config files)
   if (!LittleFS.begin(true)) {
     logger.error("LittleFS mount failed!");
@@ -72,12 +76,6 @@ void setup() {
     logger.warning("Failed to load config, using defaults");
   }
 
-  // Restore pump state if in manual mode
-  if (config.temp.manualOverride) {
-    pumpState = config.temp.pumpState;
-    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-    logger.infof("Restored manual pump state: %s", pumpState ? "ON" : "OFF");
-  }
 
   // Setup temperature sensors
   Serial.println("\n[Initializing Temperature Sensors]");
@@ -102,6 +100,19 @@ void setup() {
     Serial.printf("           or: http://%s.local\n", config.wifi.hostname);
     Serial.println("════════════════════════════════════════\n");
   }
+
+// Setup relay pin
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);  // Pump off initially
+
+  // Restore pump state if in manual mode
+  if (config.temp.manualOverride) {
+    pumpState = config.temp.pumpState;
+    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
+    logger.infof("Restored manual pump state: %s", pumpState ? "ON" : "OFF");
+  }
+
+
 }
 
 void loop() {
@@ -122,10 +133,15 @@ void loop() {
       controlPump();
     } else {
       // In manual mode, apply the configured state
+
       bool desiredState = config.temp.pumpState;
       if (pumpState != desiredState) {
         pumpState = desiredState;
         digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
+        Serial.printf("Manual mode: Pump turned %s\n", pumpState ? "ON" : "OFF");
+      } else {
+        Serial.printf("Manual mode: Pump pumpState %s\n", pumpState ? "ON" : "OFF");
+        Serial.printf("Manual mode: desiredState %s\n", desiredState ? "ON" : "OFF");
       }
     }
 
@@ -257,7 +273,10 @@ void controlPump() {
     }
   }
 }
-
+void setRelay(bool on) {
+  pumpState = on;
+  digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
+}
 void connectWiFi() {
   Serial.println("\n[Connecting to WiFi]");
   Serial.printf("SSID: %s\n", config.wifi.ssid);

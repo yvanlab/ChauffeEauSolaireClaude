@@ -32,6 +32,7 @@ struct TempDataPoint {
   float airTemp;
   float spaTemp;
   float panelTemp;
+  bool pumpState;
 };
 
 // Historical data buffer (24 hours, 1 point per minute = 1440 points max)
@@ -59,6 +60,7 @@ private:
   void handleWiFi(AsyncWebServerRequest *request);
   void handleReset(AsyncWebServerRequest *request);
   void handleHistory(AsyncWebServerRequest *request);
+  void handleSensorMapping(AsyncWebServerRequest *request);
 
 public:
   WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump);
@@ -78,6 +80,9 @@ public:
 
   // Record current temperatures to history (called periodically)
   void recordHistory();
+
+  // Get the server instance for adding custom routes
+  AsyncWebServer* getServer() { return server; }
 };
 
 #endif // WEBSERVER_H

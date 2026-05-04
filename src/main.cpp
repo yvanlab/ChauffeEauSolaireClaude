@@ -7,21 +7,15 @@
 #include "config.h"
 #include "webserver.h"
 #include "logger.h"
-/*
-GPIO23	Status LED
-GPIO16	Relay #1
-GPIO13	Relay #2
-GPIO25	Relay #3
-GPIO26	Relay #4
-*/
+
 // Version information
-const char* FIRMWARE_VERSION = "2.5";
+const char* FIRMWARE_VERSION = "2.4";
 const char* BUILD_DATE = __DATE__;
 const char* BUILD_TIME = __TIME__;
 
 // Pin definitions
 #define ONE_WIRE_BUS 4    // GPIO4 for DS18B20 sensors
-#define RELAY_PIN 16      // GPIO16 for pump relay
+#define RELAY_PIN 16      // GPIO14 for pump relay
 
 // Temperature sensors
 OneWire oneWire(ONE_WIRE_BUS);
@@ -48,7 +42,6 @@ WebServerManager* webServer = nullptr;
 void setupSensors();
 void readTemperatures();
 void controlPump();
-void setRelay(bool on);
 void connectWiFi();
 void printWelcome();
 
@@ -58,7 +51,10 @@ void setup() {
 
   printWelcome();
 
-  
+  // Setup relay pin
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);  // Pump off initially
+
   // Mount LittleFS first (required for loading config files)
   if (!LittleFS.begin(true)) {
     logger.error("LittleFS mount failed!");
@@ -76,6 +72,12 @@ void setup() {
     logger.warning("Failed to load config, using defaults");
   }
 
+  // Restore pump state if in manual mode
+  if (config.temp.manualOverride) {
+    pumpState = config.temp.pumpState;
+    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
+    logger.infof("Restored manual pump state: %s", pumpState ? "ON" : "OFF");
+  }
 
   // Setup temperature sensors
   Serial.println("\n[Initializing Temperature Sensors]");
@@ -91,6 +93,44 @@ void setup() {
   webServer = new WebServerManager(&config, &sensorData, &pumpState);
   webServer->begin();
 
+  // Add sensor list endpoint after web server starts
+  webServer->getServer()->on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request){
+    String json = "{\"sensors\":[";
+
+    for (int i = 0; i < sensorCount; i++) {
+      DeviceAddress addr;
+      sensors.getAddress(addr, i);
+
+      if (i > 0) json += ",";
+      json += "{\"index\":" + String(i) + ",";
+      json += "\"address\":\"";
+      for (int j = 0; j < 8; j++) {
+        if (j > 0) json += "-";
+        if (addr[j] < 16) json += "0";
+        json += String(addr[j], HEX);
+      }
+      json += "\",";
+
+      // Determine current role
+      String role = "unassigned";
+      if (memcmp(addr, airSensor, 8) == 0) role = "air";
+      else if (memcmp(addr, spaSensor, 8) == 0) role = "spa";
+      else if (memcmp(addr, panelSensor, 8) == 0) role = "panel";
+
+      json += "\"role\":\"" + role + "\",";
+
+      // Get current temperature
+      float temp = sensors.getTempC(addr);
+      json += "\"temp\":" + String(temp, 1);
+      json += "}";
+    }
+
+    json += "],\"useMapping\":" + String(config.sensors.useMapping ? "true" : "false");
+    json += ",\"count\":" + String(sensorCount) + "}";
+
+    request->send(200, "application/json", json);
+  });
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n╔════════════════════════════════════════╗");
     Serial.println("║     SYSTEM READY                       ║");
@@ -100,19 +140,6 @@ void setup() {
     Serial.printf("           or: http://%s.local\n", config.wifi.hostname);
     Serial.println("════════════════════════════════════════\n");
   }
-
-// Setup relay pin
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // Pump off initially
-
-  // Restore pump state if in manual mode
-  if (config.temp.manualOverride) {
-    pumpState = config.temp.pumpState;
-    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-    logger.infof("Restored manual pump state: %s", pumpState ? "ON" : "OFF");
-  }
-
-
 }
 
 void loop() {
@@ -133,15 +160,10 @@ void loop() {
       controlPump();
     } else {
       // In manual mode, apply the configured state
-
       bool desiredState = config.temp.pumpState;
       if (pumpState != desiredState) {
         pumpState = desiredState;
         digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-        Serial.printf("Manual mode: Pump turned %s\n", pumpState ? "ON" : "OFF");
-      } else {
-        Serial.printf("Manual mode: Pump pumpState %s\n", pumpState ? "ON" : "OFF");
-        Serial.printf("Manual mode: desiredState %s\n", desiredState ? "ON" : "OFF");
       }
     }
 
@@ -168,24 +190,52 @@ void setupSensors() {
   logger.infof("Found %d DS18B20 sensors on bus", sensorCount);
 
   if (sensorCount >= 3) {
-    sensors.getAddress(airSensor, 0);
-    sensors.getAddress(spaSensor, 1);
-    sensors.getAddress(panelSensor, 2);
+    // Check if we have a sensor role mapping configured
+    if (config.sensors.useMapping) {
+      logger.info("Using configured sensor role mapping");
 
-    Serial.println("\nSensor addresses detected:");
-    Serial.print("  [0] Air sensor:   ");
-    for (int i = 0; i < 8; i++) Serial.printf("%02X ", airSensor[i]);
-    Serial.println();
+      // Copy configured addresses
+      memcpy(airSensor, config.sensors.airSensorAddress, 8);
+      memcpy(spaSensor, config.sensors.spaSensorAddress, 8);
+      memcpy(panelSensor, config.sensors.panelSensorAddress, 8);
 
-    Serial.print("  [1] Spa sensor:   ");
-    for (int i = 0; i < 8; i++) Serial.printf("%02X ", spaSensor[i]);
-    Serial.println();
+      Serial.println("\nUsing configured sensor roles:");
+      Serial.print("  Air sensor:   ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", airSensor[i]);
+      Serial.println();
 
-    Serial.print("  [2] Panel sensor: ");
-    for (int i = 0; i < 8; i++) Serial.printf("%02X ", panelSensor[i]);
-    Serial.println();
+      Serial.print("  Spa sensor:   ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", spaSensor[i]);
+      Serial.println();
 
-    logger.success("All 3 sensors initialized successfully");
+      Serial.print("  Panel sensor: ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", panelSensor[i]);
+      Serial.println();
+
+      logger.success("Sensor roles loaded from configuration");
+    } else {
+      // Use default bus order
+      logger.info("Using default sensor order (0=air, 1=spa, 2=panel)");
+
+      sensors.getAddress(airSensor, 0);
+      sensors.getAddress(spaSensor, 1);
+      sensors.getAddress(panelSensor, 2);
+
+      Serial.println("\nSensor addresses detected:");
+      Serial.print("  [0] Air sensor:   ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", airSensor[i]);
+      Serial.println();
+
+      Serial.print("  [1] Spa sensor:   ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", spaSensor[i]);
+      Serial.println();
+
+      Serial.print("  [2] Panel sensor: ");
+      for (int i = 0; i < 8; i++) Serial.printf("%02X ", panelSensor[i]);
+      Serial.println();
+
+      logger.success("All 3 sensors initialized with default order");
+    }
   } else {
     logger.errorf("Only %d sensors detected (need 3)!", sensorCount);
     logger.warning("Check wiring and 4.7kΩ pull-up resistor");
@@ -273,10 +323,7 @@ void controlPump() {
     }
   }
 }
-void setRelay(bool on) {
-  pumpState = on;
-  digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-}
+
 void connectWiFi() {
   Serial.println("\n[Connecting to WiFi]");
   Serial.printf("SSID: %s\n", config.wifi.ssid);

@@ -28,6 +28,13 @@ class SystemState:
         self.wifi_hostname = "chauffeSpa"
         self.logs = []
         self.history = []
+        # Simulated sensors with unique addresses
+        self.sensors = [
+            {"address": "28-FF-64-1E-03-15-01-9A", "role": "air", "temp": 20.5},
+            {"address": "28-FF-64-1E-03-15-02-B3", "role": "spa", "temp": 30.1},
+            {"address": "28-FF-64-1E-03-15-03-C7", "role": "panel", "temp": 25.0}
+        ]
+        self.use_sensor_mapping = False
         self.add_log("OK", "System simulator started")
         self._generate_initial_history()
 
@@ -67,11 +74,15 @@ class SystemState:
                 panel_base = 18 + random.uniform(-3, 2)
             panel_temp = panel_base + random.uniform(-2, 2)
 
+            # Simulate pump activation: ON when panel > spa + 5°C
+            pump_on = panel_temp > (spa_temp + 5.0) and panel_temp > 25.0
+
             self.history.append({
                 "t": timestamp,
                 "a": round(air_temp, 1),
                 "s": round(spa_temp, 1),
-                "p": round(panel_temp, 1)
+                "p": round(panel_temp, 1),
+                "pump": 1 if pump_on else 0
             })
 
         # Keep only last 1440 points (24 hours at 1-minute intervals)
@@ -89,14 +100,29 @@ class SystemState:
         self.spa_temp = max(15, min(45, self.spa_temp))
         self.panel_temp = max(10, min(60, self.panel_temp))
 
+        # Update sensor temps
+        for sensor in self.sensors:
+            if sensor["role"] == "air":
+                sensor["temp"] = round(self.air_temp, 1)
+            elif sensor["role"] == "spa":
+                sensor["temp"] = round(self.spa_temp, 1)
+            elif sensor["role"] == "panel":
+                sensor["temp"] = round(self.panel_temp, 1)
+
         # Add to history (simulate 1-minute recording)
         current_time = int(time.time() * 1000)
         if not self.history or (current_time - self.history[-1]["t"]) >= 60000:
+            # Determine pump state
+            pump_on = (self.panel_temp > (self.spa_temp + 5.0) and
+                      self.panel_temp > 25.0 and
+                      self.spa_temp < 40.0)
+
             self.history.append({
                 "t": current_time,
                 "a": round(self.air_temp, 1),
                 "s": round(self.spa_temp, 1),
-                "p": round(self.panel_temp, 1)
+                "p": round(self.panel_temp, 1),
+                "pump": 1 if pump_on else 0
             })
             # Keep only last 1440 points
             if len(self.history) > 1440:
@@ -203,6 +229,24 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             }
             self.send_json(history_data)
 
+        # Sensors list endpoint
+        elif parsed_path.path == '/sensors':
+            state.update_temps()
+            sensors_data = {
+                "sensors": [
+                    {
+                        "index": i,
+                        "address": sensor["address"],
+                        "role": sensor["role"],
+                        "temp": sensor["temp"]
+                    }
+                    for i, sensor in enumerate(state.sensors)
+                ],
+                "useMapping": state.use_sensor_mapping,
+                "count": len(state.sensors)
+            }
+            self.send_json(sensors_data)
+
         else:
             self.send_404()
 
@@ -260,6 +304,33 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             state.max_spa = 40.0
             state.add_log("WARN", "Configuration reset to defaults")
             self.send_text("Configuration reset")
+
+        # Sensor mapping
+        elif parsed_path.path == '/sensors/mapping':
+            if 'airAddr' in params and 'spaAddr' in params and 'panelAddr' in params:
+                air_addr = params['airAddr'][0]
+                spa_addr = params['spaAddr'][0]
+                panel_addr = params['panelAddr'][0]
+
+                # Update sensor roles
+                for sensor in state.sensors:
+                    if sensor['address'] == air_addr:
+                        sensor['role'] = 'air'
+                    elif sensor['address'] == spa_addr:
+                        sensor['role'] = 'spa'
+                    elif sensor['address'] == panel_addr:
+                        sensor['role'] = 'panel'
+
+                state.use_sensor_mapping = True
+                state.add_log("OK", f"Sensor mapping updated")
+                self.send_text("Sensor mapping saved - restart required")
+            else:
+                self.send_text("Invalid sensor mapping parameters")
+
+        # Restart endpoint
+        elif parsed_path.path == '/restart':
+            state.add_log("WARN", "Restart requested (simulated)")
+            self.send_text("Restarting ESP32...")
 
         else:
             self.send_404()

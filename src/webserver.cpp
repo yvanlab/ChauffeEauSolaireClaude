@@ -1,14 +1,15 @@
 #include "webserver.h"
 #include "config.h"
 #include "logger.h"
-#include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <Update.h>
 
+// Forward declarations
+bool parseAddress(const String& addrStr, uint8_t* addr);
+
 // External configuration manager (defined in main.cpp)
 extern ConfigManager configManager;
-extern void setRelay(bool on);
 
 // External version info (defined in main.cpp)
 extern const char* FIRMWARE_VERSION;
@@ -123,6 +124,14 @@ void WebServerManager::begin() {
     this->handleReset(request);
   });
 
+  // Route: Restart ESP32
+  server->on("/restart", HTTP_POST, [](AsyncWebServerRequest *request){
+    request->send(200, "text/plain", "Restarting ESP32...");
+    logger.warning("Restart requested from web interface");
+    delay(500);
+    ESP.restart();
+  });
+
   // Route: Get logs
   server->on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request){
     String logsJSON = logger.getLogsJSON(100);
@@ -132,6 +141,17 @@ void WebServerManager::begin() {
   // Route: Get temperature history
   server->on("/history", HTTP_GET, [this](AsyncWebServerRequest *request){
     this->handleHistory(request);
+  });
+
+  // Route: Get detected sensors (handled inline to access DallasTemperature)
+  // This will be overridden from main.cpp after sensors are initialized
+  server->on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send(503, "application/json", "{\"error\":\"Sensor list not available yet\"}");
+  });
+
+  // Route: Save sensor role mapping
+  server->on("/sensors/mapping", HTTP_POST, [this](AsyncWebServerRequest *request){
+    this->handleSensorMapping(request);
   });
 
   // Route: Clear logs
@@ -333,12 +353,12 @@ void WebServerManager::handlePump(AsyncWebServerRequest *request) {
     if (manual == "on") {
       config->temp.manualOverride = true;
       config->temp.pumpState = true;
-      setRelay(true);
+      *pumpState = true;
       logger.info("Pump: MANUAL ON");
     } else if (manual == "off") {
       config->temp.manualOverride = true;
       config->temp.pumpState = false;
-      setRelay(false);
+      *pumpState = false;
       logger.info("Pump: MANUAL OFF");
     } else if (manual == "auto") {
       config->temp.manualOverride = false;
@@ -395,11 +415,12 @@ void WebServerManager::recordHistory() {
 
   lastHistoryUpdate = currentMillis;
 
-  // Store current temperatures in circular buffer
+  // Store current temperatures and pump state in circular buffer
   historyBuffer[historyIndex].timestamp = currentMillis;
   historyBuffer[historyIndex].airTemp = sensorData->airTemp;
   historyBuffer[historyIndex].spaTemp = sensorData->spaTemp;
   historyBuffer[historyIndex].panelTemp = sensorData->panelTemp;
+  historyBuffer[historyIndex].pumpState = *pumpState;
 
   // Move to next position in circular buffer
   historyIndex = (historyIndex + 1) % MAX_HISTORY_POINTS;
@@ -424,10 +445,69 @@ void WebServerManager::handleHistory(AsyncWebServerRequest *request) {
     json += "\"t\":" + String(historyBuffer[idx].timestamp) + ",";
     json += "\"a\":" + String(historyBuffer[idx].airTemp, 1) + ",";
     json += "\"s\":" + String(historyBuffer[idx].spaTemp, 1) + ",";
-    json += "\"p\":" + String(historyBuffer[idx].panelTemp, 1);
+    json += "\"p\":" + String(historyBuffer[idx].panelTemp, 1) + ",";
+    json += "\"pump\":" + String(historyBuffer[idx].pumpState ? "1" : "0");
     json += "}";
   }
 
   json += "],\"count\":" + String(historyCount) + "}";
   request->send(200, "application/json", json);
+}
+
+void WebServerManager::handleSensorMapping(AsyncWebServerRequest *request) {
+  bool updated = false;
+
+  // Parse sensor mapping from POST parameters
+  // Expected format: airAddr=XX-XX-XX-XX-XX-XX-XX-XX&spaAddr=...&panelAddr=...
+  if (request->hasParam("airAddr", true) &&
+      request->hasParam("spaAddr", true) &&
+      request->hasParam("panelAddr", true)) {
+
+    String airAddr = request->getParam("airAddr", true)->value();
+    String spaAddr = request->getParam("spaAddr", true)->value();
+    String panelAddr = request->getParam("panelAddr", true)->value();
+
+    // Parse hex addresses
+    if (parseAddress(airAddr, config->sensors.airSensorAddress) &&
+        parseAddress(spaAddr, config->sensors.spaSensorAddress) &&
+        parseAddress(panelAddr, config->sensors.panelSensorAddress)) {
+
+      config->sensors.useMapping = true;
+      configManager.saveSensorMapping(config->sensors);
+
+      logger.success("Sensor role mapping updated");
+      request->send(200, "text/plain", "Sensor mapping saved - restart required");
+      updated = true;
+    }
+  }
+
+  if (!updated) {
+    request->send(400, "text/plain", "Invalid sensor mapping parameters");
+  }
+}
+
+// Helper function to parse hex address string like "28-FF-AA-BB-CC-DD-EE-01"
+bool parseAddress(const String& addrStr, uint8_t* addr) {
+  int byteIndex = 0;
+  int strIndex = 0;
+
+  while (byteIndex < 8 && strIndex < addrStr.length()) {
+    // Skip separators
+    if (addrStr[strIndex] == '-' || addrStr[strIndex] == ':' || addrStr[strIndex] == ' ') {
+      strIndex++;
+      continue;
+    }
+
+    // Read two hex characters
+    if (strIndex + 1 < addrStr.length()) {
+      String byteStr = addrStr.substring(strIndex, strIndex + 2);
+      addr[byteIndex] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
+      byteIndex++;
+      strIndex += 2;
+    } else {
+      return false;
+    }
+  }
+
+  return byteIndex == 8;
 }

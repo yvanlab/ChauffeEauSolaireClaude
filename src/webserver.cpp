@@ -1,6 +1,7 @@
 #include "webserver.h"
 #include "config.h"
 #include "logger.h"
+#include <Arduino.h>
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <Update.h>
@@ -10,6 +11,12 @@ bool parseAddress(const String& addrStr, uint8_t* addr);
 
 // External configuration manager (defined in main.cpp)
 extern ConfigManager configManager;
+extern void setRelay(bool on);
+
+// External version info (defined in main.cpp)
+extern const char* FIRMWARE_VERSION;
+extern const char* BUILD_DATE;
+extern const char* BUILD_TIME;
 
 // External version info (defined in main.cpp)
 extern const char* FIRMWARE_VERSION;
@@ -353,12 +360,12 @@ void WebServerManager::handlePump(AsyncWebServerRequest *request) {
     if (manual == "on") {
       config->temp.manualOverride = true;
       config->temp.pumpState = true;
-      *pumpState = true;
+      setRelay(true);
       logger.info("Pump: MANUAL ON");
     } else if (manual == "off") {
       config->temp.manualOverride = true;
       config->temp.pumpState = false;
-      *pumpState = false;
+      setRelay(false);
       logger.info("Pump: MANUAL OFF");
     } else if (manual == "auto") {
       config->temp.manualOverride = false;

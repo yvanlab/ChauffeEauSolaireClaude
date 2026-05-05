@@ -3,11 +3,18 @@
 #include "logger.h"
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <WiFi.h>
 #include <Update.h>
 
 // Forward declarations
 bool parseAddress(const String& addrStr, uint8_t* addr);
+
+// External sensor variables (defined in main.cpp)
+extern DallasTemperature sensors;
+extern int sensorCount;
+extern uint8_t airSensor[8], spaSensor[8], panelSensor[8];
 
 // External configuration manager (defined in main.cpp)
 extern ConfigManager configManager;
@@ -150,10 +157,9 @@ void WebServerManager::begin() {
     this->handleHistory(request);
   });
 
-  // Route: Get detected sensors (handled inline to access DallasTemperature)
-  // This will be overridden from main.cpp after sensors are initialized
-  server->on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(503, "application/json", "{\"error\":\"Sensor list not available yet\"}");
+  // Route: Get detected sensors
+  server->on("/sensors", HTTP_GET, [this](AsyncWebServerRequest *request){
+    this->handleSensors(request);
   });
 
   // Route: Save sensor role mapping
@@ -256,7 +262,9 @@ void WebServerManager::begin() {
   }, [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final){
     if (!index) {
       logger.infof("Filesystem update started: %s", filename.c_str());
-      if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {
+      // For LittleFS OTA, use U_SPIFFS with the filesystem total size 
+      uint32_t fsSize = LittleFS.totalBytes();
+      if (!Update.begin(fsSize, U_SPIFFS)) {
         Update.printError(Serial);
       }
     }
@@ -465,7 +473,7 @@ void WebServerManager::handleSensorMapping(AsyncWebServerRequest *request) {
   bool updated = false;
 
   // Parse sensor mapping from POST parameters
-  // Expected format: airAddr=XX-XX-XX-XX-XX-XX-XX-XX&spaAddr=...&panelAddr=...
+  // Expected format: airAddr=XX-XX-XX-XX-XX-XX-XX-XX&spaAddr=...&panelAddr=...&airOffset=...&spaOffset=...&panelOffset=...
   if (request->hasParam("airAddr", true) &&
       request->hasParam("spaAddr", true) &&
       request->hasParam("panelAddr", true)) {
@@ -479,10 +487,21 @@ void WebServerManager::handleSensorMapping(AsyncWebServerRequest *request) {
         parseAddress(spaAddr, config->sensors.spaSensorAddress) &&
         parseAddress(panelAddr, config->sensors.panelSensorAddress)) {
 
+      // Parse calibration offsets if provided
+      if (request->hasParam("airOffset", true)) {
+        config->sensors.airOffset = request->getParam("airOffset", true)->value().toFloat();
+      }
+      if (request->hasParam("spaOffset", true)) {
+        config->sensors.spaOffset = request->getParam("spaOffset", true)->value().toFloat();
+      }
+      if (request->hasParam("panelOffset", true)) {
+        config->sensors.panelOffset = request->getParam("panelOffset", true)->value().toFloat();
+      }
+
       config->sensors.useMapping = true;
       configManager.saveSensorMapping(config->sensors);
 
-      logger.success("Sensor role mapping updated");
+      logger.success("Sensor role mapping and calibration offsets updated");
       request->send(200, "text/plain", "Sensor mapping saved - restart required");
       updated = true;
     }
@@ -517,4 +536,51 @@ bool parseAddress(const String& addrStr, uint8_t* addr) {
   }
 
   return byteIndex == 8;
+}
+
+void WebServerManager::handleSensors(AsyncWebServerRequest *request) {
+  String json = "{\"sensors\":[";
+
+  for (int i = 0; i < sensorCount; i++) {
+    uint8_t addr[8];
+    sensors.getAddress(addr, i);
+
+    if (i > 0) json += ",";
+    json += "{\"index\":" + String(i) + ",";
+    json += "\"address\":\"";
+    for (int j = 0; j < 8; j++) {
+      if (j > 0) json += "-";
+      if (addr[j] < 16) json += "0";
+      json += String(addr[j], HEX);
+    }
+    json += "\",";
+
+    // Determine current role and offset
+    String role = "unassigned";
+    float offset = 0.0;
+    if (memcmp(addr, airSensor, 8) == 0) {
+      role = "air";
+      offset = config->sensors.airOffset;
+    } else if (memcmp(addr, spaSensor, 8) == 0) {
+      role = "spa";
+      offset = config->sensors.spaOffset;
+    } else if (memcmp(addr, panelSensor, 8) == 0) {
+      role = "panel";
+      offset = config->sensors.panelOffset;
+    }
+
+    json += "\"role\":\"" + role + "\",";
+    json += "\"offset\":" + String(offset, 1) + ",";
+
+    // Get current temperature
+    float temp = sensors.getTempC(addr);
+    json += "\"temp\":" + String(temp, 1);
+    json += "}";
+  }
+
+  json += "],\"useMapping\":" + String(config->sensors.useMapping ? "true" : "false");
+  json += ",\"count\":" + String(sensorCount);
+  json += "}";
+
+  request->send(200, "application/json", json);
 }

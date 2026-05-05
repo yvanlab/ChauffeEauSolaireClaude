@@ -467,6 +467,38 @@
     .sensor-role select:hover {
       border-color: #999;
     }
+    .sensor-calibration {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f8f9ff;
+      border-radius: 6px;
+      border-left: 3px solid #667eea;
+    }
+    .sensor-calibration label {
+      display: block;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 6px;
+      font-size: 0.9em;
+    }
+    .sensor-calibration input {
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.9em;
+      text-align: center;
+    }
+    .sensor-calibration input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    }
+    .sensor-calibration small {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.8em;
+      color: #666;
+    }
     .role-badge {
       display: inline-block;
       padding: 4px 12px;
@@ -551,6 +583,7 @@
           <button class="tab" onclick="showTab(event, 'sensors')">Capteurs</button>
           <button class="tab" onclick="showTab(event, 'wifi')">WiFi</button>
           <button class="tab" onclick="showTab(event, 'system')">Système</button>
+          <button class="tab" onclick="showTab(event, 'api')">API</button>
         </div>
 
         <!-- Graph Tab -->
@@ -611,6 +644,7 @@
             <div class="info-box" style="background: #fff3cd; border-left: 4px solid #ffc107;">
               ⚠️ Redémarrage requis après sauvegarde
             </div>
+
             <button type="submit" class="btn btn-primary">💾 Enregistrer la configuration</button>
             <div class="message success" id="sensorMessage">Configuration enregistrée - redémarrage requis</div>
           </form>
@@ -697,12 +731,12 @@
                 <td style="padding: 8px;" id="sysVersion">--</td>
               </tr>
               <tr style="border-bottom: 1px solid #ddd;">
-                <td style="padding: 8px; font-weight: 600;">Date de compilation:</td>
-                <td style="padding: 8px;" id="sysBuildDate">--</td>
+                <td style="padding: 8px; font-weight: 600;">Date et heure de compilation:</td>
+                <td style="padding: 8px;" id="sysBuildDateTime">--</td>
               </tr>
               <tr style="border-bottom: 1px solid #ddd;">
-                <td style="padding: 8px; font-weight: 600;">Heure de compilation:</td>
-                <td style="padding: 8px;" id="sysBuildTime">--</td>
+                <td style="padding: 8px; font-weight: 600;">Date et heure de compilation du système de fichiers:</td>
+                <td style="padding: 8px;" id="sysFilesystemDateTime">--</td>
               </tr>
               <tr style="border-bottom: 1px solid #ddd;">
                 <td style="padding: 8px; font-weight: 600;">Modèle de puce:</td>
@@ -833,6 +867,156 @@
             </button>
           </div>
         </div>
+
+        <!-- API Documentation Tab -->
+        <div class="tab-content" id="tab-api">
+          <div class="info-box" style="background: #f3e5f5; border-left: 4px solid #9c27b0;">
+            <h3 style="margin-bottom: 15px; color: #7b1fa2;">🔗 API REST - Points d'accès HTTP</h3>
+            <p style="margin-bottom: 20px; color: #666;">
+              Liste complète des endpoints HTTP disponibles sur l'ESP32 pour l'intégration et le débogage.
+            </p>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+              <thead>
+                <tr style="background: #f5f5f5; border-bottom: 2px solid #ddd;">
+                  <th style="padding: 10px; text-align: left; font-weight: 600;">Endpoint</th>
+                  <th style="padding: 10px; text-align: left; font-weight: 600;">Méthode</th>
+                  <th style="padding: 10px; text-align: left; font-weight: 600;">Description</th>
+                  <th style="padding: 10px; text-align: left; font-weight: 600;">Format réponse</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/" target="_blank" style="color: #2196F3; text-decoration: none;">/</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Page web principale</td>
+                  <td style="padding: 8px;">HTML</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/data" target="_blank" style="color: #2196F3; text-decoration: none;">/data</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Données des capteurs en temps réel</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/sensors" target="_blank" style="color: #2196F3; text-decoration: none;">/sensors</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Liste des capteurs DS18B20 détectés</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/system/info" target="_blank" style="color: #2196F3; text-decoration: none;">/system/info</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Informations système (version, mémoire, etc.)</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/config</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Mise à jour de la configuration température</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/pump</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Contrôle manuel de la pompe</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/sensors/mapping</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Configuration des rôles des capteurs</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/wifi/config</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Configuration WiFi</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/wifi/scan" target="_blank" style="color: #2196F3; text-decoration: none;">/wifi/scan</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Scan des réseaux WiFi disponibles</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/wifi/scan/start" target="_blank" style="color: #2196F3; text-decoration: none;">/wifi/scan/start</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Démarrage du scan WiFi (asynchrone)</td>
+                  <td style="padding: 8px;">Plain text</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/logs" target="_blank" style="color: #2196F3; text-decoration: none;">/logs</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Récupération des journaux système</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/logs/clear</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Effacement des journaux</td>
+                  <td style="padding: 8px;">Plain text</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/restart</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Redémarrage de l'ESP32</td>
+                  <td style="padding: 8px;">Plain text</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/update/firmware</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Téléversement du firmware (OTA)</td>
+                  <td style="padding: 8px;">Plain text</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;">/update/filesystem</td>
+                  <td style="padding: 8px;"><code>POST</code></td>
+                  <td style="padding: 8px;">Téléversement du système de fichiers (OTA)</td>
+                  <td style="padding: 8px;">Plain text</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 6px;">
+              <h4 style="margin-top: 0; color: #666;">💡 Exemples d'utilisation:</h4>
+              <div style="font-family: monospace; font-size: 0.85em; color: #555; margin-top: 10px;">
+                <div style="margin-bottom: 8px;"><strong>Données capteurs:</strong> <code>curl http://esp32.local/data</code></div>
+                <div style="margin-bottom: 8px;"><strong>Liste capteurs:</strong> <code>curl http://esp32.local/sensors</code></div>
+                <div style="margin-bottom: 8px;"><strong>Info système:</strong> <code>curl http://esp32.local/system/info</code></div>
+                <div style="margin-bottom: 8px;"><strong>Contrôle pompe:</strong> <code>curl -X POST http://esp32.local/pump -d "state=on"</code></div>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #e8f5e8; border-radius: 6px; border-left: 4px solid #4caf50;">
+              <h4 style="margin-top: 0; color: #2e7d32;">🔗 Test API - Liens fonctionnels</h4>
+              <p style="margin-bottom: 15px; color: #666; font-size: 0.9em;">
+                Cliquez sur les liens ci-dessous pour tester les endpoints directement depuis votre navigateur.
+              </p>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <a href="/data" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  📊 /data (JSON)
+                </a>
+                <a href="/sensors" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  🔍 /sensors (JSON)
+                </a>
+                <a href="/system/info" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  ℹ️ /system/info (JSON)
+                </a>
+                <a href="/logs" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  📋 /logs (JSON)
+                </a>
+                <a href="/wifi/scan" target="_blank" class="btn btn-info btn-small" style="text-decoration: none; text-align: center;">
+                  📶 /wifi/scan (JSON)
+                </a>
+              </div>
+              <div style="margin-top: 10px; font-size: 0.8em; color: #666;">
+                <strong>Note:</strong> Les liens s'ouvrent dans un nouvel onglet. Utilisez les outils de développement (F12) pour voir la réponse JSON.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Logs Section -->
@@ -894,6 +1078,9 @@
     // Initialize form detection
     setupFormEditingDetection();
 
+    // Filesystem build information
+    const FILESYSTEM_BUILD_DATE = "May 4 2026";
+
     // Update data every 2 seconds
     setInterval(updateData, 2000);
     updateData();
@@ -906,8 +1093,8 @@
         .then(response => response.json())
         .then(info => {
           document.getElementById('sysVersion').textContent = info.version;
-          document.getElementById('sysBuildDate').textContent = info.buildDate;
-          document.getElementById('sysBuildTime').textContent = info.buildTime;
+          document.getElementById('sysBuildDateTime').textContent = info.buildDate + ' ' + info.buildTime;
+          document.getElementById('sysFilesystemDateTime').textContent = FILESYSTEM_BUILD_DATE;
           document.getElementById('sysChipModel').textContent = info.chipModel;
           document.getElementById('sysCpuFreq').textContent = info.cpuFreq;
           document.getElementById('sysFlashSize').textContent = formatBytes(info.flashSize);
@@ -1279,13 +1466,15 @@
       const progressDiv = document.getElementById('firmwareProgress');
       const messageDiv = document.getElementById('firmwareMessage');
       progressDiv.style.display = 'block';
-      progressDiv.textContent = 'Téléversement en cours... 0%';
+      progressDiv.style.width = '0%';
+      progressDiv.textContent = '0%';
 
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
           const percent = Math.round((e.loaded / e.total) * 100);
-          progressDiv.textContent = `Téléversement en cours... ${percent}%`;
+          progressDiv.style.width = percent + '%';
+          progressDiv.textContent = percent + '%';
         }
       });
 
@@ -1332,13 +1521,15 @@
       const progressDiv = document.getElementById('filesystemProgress');
       const messageDiv = document.getElementById('filesystemMessage');
       progressDiv.style.display = 'block';
-      progressDiv.textContent = 'Téléversement en cours... 0%';
+      progressDiv.style.width = '0%';
+      progressDiv.textContent = '0%';
 
       const xhr = new XMLHttpRequest();
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) {
           const percent = Math.round((e.loaded / e.total) * 100);
-          progressDiv.textContent = `Téléversement en cours... ${percent}%`;
+          progressDiv.style.width = percent + '%';
+          progressDiv.textContent = percent + '%';
         }
       });
 
@@ -1647,18 +1838,25 @@
       container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">Chargement des capteurs...</div>';
 
       fetch('/sensors')
-        .then(response => response.json())
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('HTTP error! status: ' + response.status);
+          }
+          return response.json();
+        })
         .then(data => {
+          console.log('Sensor data received:', data);
           sensorsData = data;
           displaySensors(data);
         })
         .catch(error => {
           console.error('Error loading sensors:', error);
-          container.innerHTML = '<div class="info-box" style="background: #f8d7da;">Erreur de chargement des capteurs</div>';
+          container.innerHTML = '<div class="info-box" style="background: #f8d7da;">Erreur de chargement des capteurs: ' + error.message + '</div>';
         });
     }
 
     function displaySensors(data) {
+      console.log('Displaying sensors:', data);
       const container = document.getElementById('sensorListContainer');
       const form = document.getElementById('sensorMappingForm');
 
@@ -1668,11 +1866,17 @@
         return;
       }
 
+      // No need to load separate calibration offsets anymore - they're in each sensor
+
       let html = '<h3 style="margin-bottom: 15px;">Capteurs détectés: ' + data.count + '</h3>';
 
       data.sensors.forEach((sensor, index) => {
         const roleClass = sensor.role || 'unassigned';
         const roleLabel = getRoleLabel(sensor.role);
+        
+        // Calculate adjusted temperature using sensor's offset
+        const offset = parseFloat(sensor.offset) || 0;
+        const adjustedTemp = sensor.temp + offset;
 
         html += '<div class="sensor-item">';
         html += '  <div class="sensor-header">';
@@ -1680,7 +1884,10 @@
         html += '      <strong>Capteur #' + (index + 1) + '</strong>';
         html += '      <span class="role-badge ' + roleClass + '" style="margin-left: 10px;">' + roleLabel + '</span>';
         html += '    </div>';
-        html += '    <div class="sensor-temp">' + sensor.temp.toFixed(1) + '°C</div>';
+        html += '    <div class="sensor-temp">';
+        html += '      <div style="font-size: 1.1em; font-weight: bold;">' + adjustedTemp.toFixed(1) + '°C</div>';
+        html += '      <div style="font-size: 0.8em; color: #666;">Mesuré: ' + sensor.temp.toFixed(1) + '°C</div>';
+        html += '    </div>';
         html += '  </div>';
         html += '  <div class="sensor-address">📍 ' + sensor.address.toUpperCase() + '</div>';
         html += '  <div class="sensor-role">';
@@ -1692,6 +1899,21 @@
         html += '      <option value="panel"' + (sensor.role === 'panel' ? ' selected' : '') + '>☀️ Panneaux (Sortie panneaux solaires)</option>';
         html += '    </select>';
         html += '  </div>';
+        
+        // Add calibration input for assigned sensors
+        if (sensor.role !== 'unassigned') {
+          const offsetId = sensor.role + 'Offset';
+          const offsetLabel = sensor.role === 'air' ? 'Air' : (sensor.role === 'spa' ? 'Spa' : 'Panneau');
+          html += '  <div class="sensor-calibration">';
+          html += '    <label>Compensation ' + offsetLabel + ':</label>';
+          html += '    <div style="display: flex; align-items: center; gap: 8px;">';
+          html += '      <input type="number" id="' + offsetId + '" name="' + offsetId + '" step="0.1" min="-5" max="5" value="' + offset.toFixed(1) + '" style="width: 80px;" onchange="updateCalibration(this)">';
+          html += '      <span style="font-size: 0.9em; color: #666;">°C</span>';
+          html += '    </div>';
+          html += '    <small style="color: #666;">Ajustement appliqué</small>';
+          html += '  </div>';
+        }
+        
         html += '</div>';
       });
 
@@ -1716,6 +1938,15 @@
 
       badge.className = 'role-badge ' + role;
       badge.textContent = getRoleLabel(role);
+      
+      // Refresh the sensor list to show/hide calibration input
+      loadSensors();
+    }
+
+    function updateCalibration(inputElement) {
+      // The calibration values are handled in saveSensorMapping
+      // This function can be used for real-time updates if needed
+      console.log('Calibration updated:', inputElement.id, inputElement.value);
     }
 
     function saveSensorMapping(event) {
@@ -1757,6 +1988,11 @@
       formData.append('airAddr', airAddr);
       formData.append('spaAddr', spaAddr);
       formData.append('panelAddr', panelAddr);
+      
+      // Add calibration offsets from inline inputs
+      formData.append('airOffset', parseFloat(document.getElementById('airOffset')?.value || '0'));
+      formData.append('spaOffset', parseFloat(document.getElementById('spaOffset')?.value || '0'));
+      formData.append('panelOffset', parseFloat(document.getElementById('panelOffset')?.value || '0'));
 
       fetch('/sensors/mapping', {
         method: 'POST',

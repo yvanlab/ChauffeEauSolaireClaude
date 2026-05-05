@@ -9,6 +9,11 @@ struct SensorMapping {
   uint8_t spaSensorAddress[8];
   uint8_t panelSensorAddress[8];
   bool useMapping;  // If false, use default bus index (0=air, 1=spa, 2=panel)
+  
+  // Calibration offsets for temperature compensation
+  float airOffset;    // Offset to add to air sensor reading
+  float spaOffset;    // Offset to add to spa sensor reading
+  float panelOffset;  // Offset to add to panel sensor reading
 
   // Constructor with default values
   SensorMapping() {
@@ -16,6 +21,9 @@ struct SensorMapping {
     memset(spaSensorAddress, 0, 8);
     memset(panelSensorAddress, 0, 8);
     useMapping = false;
+    airOffset = 0.0;
+    spaOffset = 0.0;
+    panelOffset = 0.0;
   }
 };
 

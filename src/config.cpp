@@ -108,6 +108,11 @@ bool ConfigManager::loadSensorMapping(SensorMapping& config) {
   // Load useMapping flag
   config.useMapping = doc["useMapping"] | false;
 
+  // Load calibration offsets
+  config.airOffset = doc["airOffset"] | 0.0;
+  config.spaOffset = doc["spaOffset"] | 0.0;
+  config.panelOffset = doc["panelOffset"] | 0.0;
+
   if (config.useMapping) {
     // Load sensor addresses from JSON (stored as hex string arrays)
     JsonArray airAddr = doc["airSensor"];
@@ -267,6 +272,11 @@ bool ConfigManager::saveSensorMapping(const SensorMapping& config) {
     spaAddr.add(config.spaSensorAddress[i]);
     panelAddr.add(config.panelSensorAddress[i]);
   }
+
+  // Save calibration offsets
+  doc["airOffset"] = config.airOffset;
+  doc["spaOffset"] = config.spaOffset;
+  doc["panelOffset"] = config.panelOffset;
 
   File file = LittleFS.open(SENSOR_CONFIG_FILE, "w");
   if (!file) {

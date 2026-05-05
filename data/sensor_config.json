@@ -1,0 +1,9 @@
+{
+  "useMapping": false,
+  "airSensor": [0, 0, 0, 0, 0, 0, 0, 0],
+  "spaSensor": [0, 0, 0, 0, 0, 0, 0, 0],
+  "panelSensor": [0, 0, 0, 0, 0, 0, 0, 0],
+  "airOffset": 0.0,
+  "spaOffset": 0.0,
+  "panelOffset": 0.0
+}

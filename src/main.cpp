@@ -7,7 +7,13 @@
 #include "config.h"
 #include "webserver.h"
 #include "logger.h"
-
+/*
+GPIO23	Status LED
+GPIO16	Relay #1
+GPIO13	Relay #2
+GPIO25	Relay #3
+GPIO26	Relay #4
+*/
 // Version information
 const char* FIRMWARE_VERSION = "2.4";
 const char* BUILD_DATE = __DATE__;
@@ -42,6 +48,7 @@ WebServerManager* webServer = nullptr;
 void setupSensors();
 void readTemperatures();
 void controlPump();
+void setRelay(bool on);
 void connectWiFi();
 void printWelcome();
 
@@ -51,9 +58,10 @@ void setup() {
 
   printWelcome();
 
-  // Setup relay pin
+
+  // Initialize pins
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);  // Pump off initially
+  digitalWrite(RELAY_PIN, LOW); // Start with pump off
 
   // Mount LittleFS first (required for loading config files)
   if (!LittleFS.begin(true)) {
@@ -72,12 +80,6 @@ void setup() {
     logger.warning("Failed to load config, using defaults");
   }
 
-  // Restore pump state if in manual mode
-  if (config.temp.manualOverride) {
-    pumpState = config.temp.pumpState;
-    digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-    logger.infof("Restored manual pump state: %s", pumpState ? "ON" : "OFF");
-  }
 
   // Setup temperature sensors
   Serial.println("\n[Initializing Temperature Sensors]");
@@ -94,42 +96,7 @@ void setup() {
   webServer->begin();
 
   // Add sensor list endpoint after web server starts
-  webServer->getServer()->on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request){
-    String json = "{\"sensors\":[";
-
-    for (int i = 0; i < sensorCount; i++) {
-      DeviceAddress addr;
-      sensors.getAddress(addr, i);
-
-      if (i > 0) json += ",";
-      json += "{\"index\":" + String(i) + ",";
-      json += "\"address\":\"";
-      for (int j = 0; j < 8; j++) {
-        if (j > 0) json += "-";
-        if (addr[j] < 16) json += "0";
-        json += String(addr[j], HEX);
-      }
-      json += "\",";
-
-      // Determine current role
-      String role = "unassigned";
-      if (memcmp(addr, airSensor, 8) == 0) role = "air";
-      else if (memcmp(addr, spaSensor, 8) == 0) role = "spa";
-      else if (memcmp(addr, panelSensor, 8) == 0) role = "panel";
-
-      json += "\"role\":\"" + role + "\",";
-
-      // Get current temperature
-      float temp = sensors.getTempC(addr);
-      json += "\"temp\":" + String(temp, 1);
-      json += "}";
-    }
-
-    json += "],\"useMapping\":" + String(config.sensors.useMapping ? "true" : "false");
-    json += ",\"count\":" + String(sensorCount) + "}";
-
-    request->send(200, "application/json", json);
-  });
+  // Now handled in WebServerManager::begin()
 
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n╔════════════════════════════════════════╗");
@@ -160,6 +127,7 @@ void loop() {
       controlPump();
     } else {
       // In manual mode, apply the configured state
+      Serial.printf("config.temp.pumpState %d, pumpState %d\n", config.temp.pumpState, pumpState);
       bool desiredState = config.temp.pumpState;
       if (pumpState != desiredState) {
         pumpState = desiredState;
@@ -186,6 +154,10 @@ void loop() {
 }
 
 void setupSensors() {
+  // Request temperatures to wake up sensors on the bus
+  sensors.requestTemperatures();
+  delay(100); // Give sensors time to respond
+
   sensorCount = sensors.getDeviceCount();
   logger.infof("Found %d DS18B20 sensors on bus", sensorCount);
 
@@ -246,9 +218,10 @@ void readTemperatures() {
   sensors.requestTemperatures();
 
   if (sensorCount >= 3) {
-    sensorData.airTemp = sensors.getTempC(airSensor);
-    sensorData.spaTemp = sensors.getTempC(spaSensor);
-    sensorData.panelTemp = sensors.getTempC(panelSensor);
+    // Read raw temperatures and apply calibration offsets
+    sensorData.airTemp = sensors.getTempC(airSensor) + config.sensors.airOffset;
+    sensorData.spaTemp = sensors.getTempC(spaSensor) + config.sensors.spaOffset;
+    sensorData.panelTemp = sensors.getTempC(panelSensor) + config.sensors.panelOffset;
 
     // Check for sensor errors
     if (sensorData.airTemp == DEVICE_DISCONNECTED_C) {
@@ -323,7 +296,11 @@ void controlPump() {
     }
   }
 }
-
+void setRelay(bool on) {
+  pumpState = on;
+  Serial.printf("Setting relay: %s\n", on ? "ON" : "OFF");
+  digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
+}
 void connectWiFi() {
   Serial.println("\n[Connecting to WiFi]");
   Serial.printf("SSID: %s\n", config.wifi.ssid);

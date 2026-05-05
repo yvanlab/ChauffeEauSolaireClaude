@@ -61,6 +61,7 @@ private:
   void handleReset(AsyncWebServerRequest *request);
   void handleHistory(AsyncWebServerRequest *request);
   void handleSensorMapping(AsyncWebServerRequest *request);
+  void handleSensors(AsyncWebServerRequest *request);
 
 public:
   WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump);

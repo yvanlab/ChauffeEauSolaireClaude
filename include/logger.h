@@ -2,6 +2,7 @@
 #define LOGGER_H
 
 #include <Arduino.h>
+#include <stdint.h>
 #include <vector>
 
 // Log levels
@@ -14,11 +15,11 @@ enum LogLevel {
 
 // Log entry structure
 struct LogEntry {
-  unsigned long timestamp;  // millis() when logged
+  uint64_t timestamp;  // epoch milliseconds or fallback uptime-based millis
   LogLevel level;
   String message;
 
-  LogEntry(unsigned long ts, LogLevel lvl, const String& msg)
+  LogEntry(uint64_t ts, LogLevel lvl, const String& msg)
     : timestamp(ts), level(lvl), message(msg) {}
 };
 

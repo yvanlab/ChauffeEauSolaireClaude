@@ -30,18 +30,24 @@ struct SensorMapping {
 // Temperature configuration structure
 struct TempConfig {
   float tempDifferenceThreshold;  // Degrees C difference to activate pump
-  float minPanelTemp;             // Minimum panel temp to activate pump
+  float hysteresis;               // Hysteresis to turn off pump
+  float minExternalTemp;          // Minimum external air temp to allow pump activation
   float maxSpaTemp;               // Maximum spa temp (safety limit)
   bool manualOverride;            // Manual pump control
   bool pumpState;                 // Current pump state (for manual mode persistence)
+  int sampleInterval;             // Frequency of pump activation for sampling (minutes)
+  int sampleDuration;             // Duration of pump activation for sampling (seconds)
 
   // Constructor with default values
   TempConfig() {
     tempDifferenceThreshold = 5.0;
-    minPanelTemp = 25.0;
+    hysteresis = 1.0;
+    minExternalTemp = 25.0;
     maxSpaTemp = 40.0;
     manualOverride = false;
     pumpState = false;
+    sampleInterval = 60;
+    sampleDuration = 120;
   }
 };
 
@@ -53,9 +59,12 @@ struct WiFiConfig {
 
   // Constructor with default values
   WiFiConfig() {
-    strcpy(ssid, "YOUR_WIFI_SSID");
-    strcpy(password, "YOUR_WIFI_PASSWORD");
-    strcpy(hostname, "chauffeSpa");
+    strncpy(ssid, "YOUR_WIFI_SSID", sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = '\0';
+    strncpy(password, "YOUR_WIFI_PASSWORD", sizeof(password) - 1);
+    password[sizeof(password) - 1] = '\0';
+    strncpy(hostname, "chauffeSpa", sizeof(hostname) - 1);
+    hostname[sizeof(hostname) - 1] = '\0';
   }
 };
 

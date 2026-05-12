@@ -1,12 +1,15 @@
 #include "webserver.h"
 #include "config.h"
 #include "logger.h"
+#include "time_utils.h"
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <WiFi.h>
 #include <Update.h>
+#include <ESPmDNS.h>
+#include <esp_task_wdt.h>
 
 // Forward declarations
 bool parseAddress(const String& addrStr, uint8_t* addr);
@@ -19,11 +22,6 @@ extern uint8_t airSensor[8], spaSensor[8], panelSensor[8];
 // External configuration manager (defined in main.cpp)
 extern ConfigManager configManager;
 extern void setRelay(bool on);
-
-// External version info (defined in main.cpp)
-extern const char* FIRMWARE_VERSION;
-extern const char* BUILD_DATE;
-extern const char* BUILD_TIME;
 
 // External version info (defined in main.cpp)
 extern const char* FIRMWARE_VERSION;
@@ -97,6 +95,8 @@ void WebServerManager::begin() {
     json += "\"version\":\"" + String(FIRMWARE_VERSION) + "\",";
     json += "\"buildDate\":\"" + String(BUILD_DATE) + "\",";
     json += "\"buildTime\":\"" + String(BUILD_TIME) + "\",";
+    json += "\"fsBuildDate\":\"" + String(__DATE__) + "\",";
+    json += "\"fsBuildTime\":\"" + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"cpuFreq\":" + String(ESP.getCpuFreqMHz()) + ",";
     json += "\"flashSize\":" + String(ESP.getFlashChipSize()) + ",";
@@ -284,6 +284,55 @@ void WebServerManager::begin() {
   logger.success("HTTP server started on port 80");
 }
 
+void WebServerManager::connectWiFi() {
+  Serial.println("\n[Connecting to WiFi]");
+  Serial.printf("SSID: %s\n", config->wifi.ssid);
+  Serial.printf("Hostname: %s.local\n", config->wifi.hostname);
+
+  logger.infof("Connecting to WiFi: %s", config->wifi.ssid);
+
+  // Set hostname before connecting
+  WiFi.setHostname(config->wifi.hostname);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(config->wifi.ssid, config->wifi.password);
+
+  int attempts = 0;
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+    esp_task_wdt_reset(); // Pet the watchdog during connection attempts
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    logger.successf("WiFi connected - IP: %s", WiFi.localIP().toString().c_str());
+    logger.infof("Signal strength: %d dBm", WiFi.RSSI());
+  } else {
+    logger.error("WiFi connection failed! Starting Access Point (AP) mode...");
+    
+    WiFi.mode(WIFI_AP);
+    String apSSID = "Spa-" + String(config->wifi.hostname);
+    
+    // Start AP without password for configuration recovery
+    if (WiFi.softAP(apSSID.c_str())) {
+      logger.successf("AP Mode started: %s", apSSID.c_str());
+      logger.infof("Connect to this network and go to http://192.168.4.1");
+    } else {
+      logger.error("Failed to start AP Mode");
+    }
+  }
+
+  // Start mDNS responder (Works in both STA and AP mode)
+  if (MDNS.begin(config->wifi.hostname)) {
+    logger.successf("mDNS started: http://%s.local", config->wifi.hostname);
+    MDNS.addService("http", "tcp", 80);
+  } else {
+    logger.error("Failed to start mDNS responder");
+  }
+}
+
 void WebServerManager::end() {
   server->end();
   Serial.println("HTTP server stopped");
@@ -317,15 +366,22 @@ void WebServerManager::handleRoot(AsyncWebServerRequest *request) {
 
 void WebServerManager::handleData(AsyncWebServerRequest *request) {
   String json = "{";
+  json.reserve(512); // Pre-allocate memory to prevent fragmentation
+
   json += "\"airTemp\":" + String(sensorData->airTemp, 1) + ",";
   json += "\"spaTemp\":" + String(sensorData->spaTemp, 1) + ",";
   json += "\"panelTemp\":" + String(sensorData->panelTemp, 1) + ",";
   json += "\"pumpState\":" + String(*pumpState ? "true" : "false") + ",";
   json += "\"tempDiff\":" + String(config->temp.tempDifferenceThreshold, 1) + ",";
-  json += "\"minPanel\":" + String(config->temp.minPanelTemp, 1) + ",";
+  json += "\"hysteresis\":" + String(config->temp.hysteresis, 1) + ",";
+  json += "\"minExternal\":" + String(config->temp.minExternalTemp, 1) + ",";
   json += "\"maxSpa\":" + String(config->temp.maxSpaTemp, 1) + ",";
+  json += "\"apMode\":" + String(WiFi.getMode() == WIFI_AP ? "true" : "false") + ",";
   json += "\"manualOverride\":" + String(config->temp.manualOverride ? "true" : "false") + ",";
+  json += "\"sampleInterval\":" + String(config->temp.sampleInterval) + ",";
+  json += "\"sampleDuration\":" + String(config->temp.sampleDuration) + ",";
   json += "\"wifiSSID\":\"" + String(config->wifi.ssid) + "\",";
+  json += "\"wifiPassword\":\"" + String(config->wifi.password) + "\",";
   json += "\"wifiHostname\":\"" + String(config->wifi.hostname) + "\",";
   json += "\"wifiIP\":\"" + WiFi.localIP().toString() + "\",";
   json += "\"wifiRSSI\":" + String(WiFi.RSSI());
@@ -340,21 +396,36 @@ void WebServerManager::handleConfig(AsyncWebServerRequest *request) {
     config->temp.tempDifferenceThreshold = request->getParam("tempDiff", true)->value().toFloat();
     updated = true;
   }
-  if (request->hasParam("minPanel", true)) {
-    config->temp.minPanelTemp = request->getParam("minPanel", true)->value().toFloat();
+  if (request->hasParam("hysteresis", true)) {
+    config->temp.hysteresis = request->getParam("hysteresis", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("minExternal", true)) {
+    config->temp.minExternalTemp = request->getParam("minExternal", true)->value().toFloat();
     updated = true;
   }
   if (request->hasParam("maxSpa", true)) {
     config->temp.maxSpaTemp = request->getParam("maxSpa", true)->value().toFloat();
     updated = true;
   }
+  if (request->hasParam("sampleInterval", true)) {
+    config->temp.sampleInterval = request->getParam("sampleInterval", true)->value().toInt();
+    updated = true;
+  }
+  if (request->hasParam("sampleDuration", true)) {
+    config->temp.sampleDuration = request->getParam("sampleDuration", true)->value().toInt();
+    updated = true;
+  }
 
   if (updated) {
     configManager.saveTempParams(config->temp);
-    logger.infof("Temperature parameters updated: diff=%.1f, min=%.1f, max=%.1f",
+    logger.infof("Temperature parameters updated: diff=%.1f, hyst=%.1f, min=%.1f, max=%.1f, interval=%d, duration=%d",
                  config->temp.tempDifferenceThreshold,
-                 config->temp.minPanelTemp,
-                 config->temp.maxSpaTemp);
+                 config->temp.hysteresis,
+                 config->temp.minExternalTemp,
+                 config->temp.maxSpaTemp,
+                 config->temp.sampleInterval,
+                 config->temp.sampleDuration);
     request->send(200, "text/plain", "Settings saved to JSON");
   } else {
     request->send(400, "text/plain", "No parameters provided");
@@ -431,7 +502,8 @@ void WebServerManager::recordHistory() {
   lastHistoryUpdate = currentMillis;
 
   // Store current temperatures and pump state in circular buffer
-  historyBuffer[historyIndex].timestamp = currentMillis;
+  // Store as seconds to avoid 32-bit truncation of epoch milliseconds
+  historyBuffer[historyIndex].timestamp = (unsigned long)(getEpochMillis() / 1000);
   historyBuffer[historyIndex].airTemp = sensorData->airTemp;
   historyBuffer[historyIndex].spaTemp = sensorData->spaTemp;
   historyBuffer[historyIndex].panelTemp = sensorData->panelTemp;
@@ -447,26 +519,36 @@ void WebServerManager::recordHistory() {
 }
 
 void WebServerManager::handleHistory(AsyncWebServerRequest *request) {
-  String json = "{\"points\":[";
+  // Use ResponseStream to avoid allocating a massive contiguous String in heap (OOM)
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+  response->print("{\"points\":[");
 
   // Read from circular buffer in chronological order
   int startIdx = (historyCount < MAX_HISTORY_POINTS) ? 0 : historyIndex;
 
   for (int i = 0; i < historyCount; i++) {
     int idx = (startIdx + i) % MAX_HISTORY_POINTS;
+    if (i > 0) response->print(",");
 
-    if (i > 0) json += ",";
-    json += "{";
-    json += "\"t\":" + String(historyBuffer[idx].timestamp) + ",";
-    json += "\"a\":" + String(historyBuffer[idx].airTemp, 1) + ",";
-    json += "\"s\":" + String(historyBuffer[idx].spaTemp, 1) + ",";
-    json += "\"p\":" + String(historyBuffer[idx].panelTemp, 1) + ",";
-    json += "\"pump\":" + String(historyBuffer[idx].pumpState ? "1" : "0");
-    json += "}";
+    response->print("{");
+    // Convert seconds back to milliseconds for Chart.js
+    response->print("\"t\":");
+    response->print((unsigned long long)historyBuffer[idx].timestamp * 1000ULL);
+    response->print(",");
+    response->print("\"a\":"); response->print(historyBuffer[idx].airTemp, 1);
+    response->print(",\"s\":"); response->print(historyBuffer[idx].spaTemp, 1);
+    response->print(",\"p\":"); response->print(historyBuffer[idx].panelTemp, 1);
+    response->print(",\"pump\":"); response->print(historyBuffer[idx].pumpState ? "1" : "0");
+    response->print("}");
+    
+    // Yield occasionally to keep the network stack happy during large transfers
+    if (i % 50 == 0) yield();
   }
 
-  json += "],\"count\":" + String(historyCount) + "}";
-  request->send(200, "application/json", json);
+  response->print("],\"count\":");
+  response->print(historyCount);
+  response->print("}");
+  request->send(response);
 }
 
 void WebServerManager::handleSensorMapping(AsyncWebServerRequest *request) {

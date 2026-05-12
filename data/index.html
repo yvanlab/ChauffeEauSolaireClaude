@@ -109,6 +109,16 @@
     .form-group {
       margin-bottom: 20px;
     }
+    .form-group-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .form-group-row .form-group {
+      flex: 1 1 260px;
+      min-width: 220px;
+    }
     label {
       display: block;
       margin-bottom: 8px;
@@ -657,29 +667,55 @@
         <!-- Temperature Configuration Tab -->
         <div class="tab-content active" id="tab-temp">
           <form id="configForm" onsubmit="saveConfig(event)">
-            <div class="form-group">
-              <label for="tempDiff">Différence de température pour activation (°C):</label>
-              <input type="number" id="tempDiff" step="0.5" min="0" max="20" required>
-              <small>La pompe démarre si Panel > Spa + cette valeur</small>
+            <!-- Group for Minimum Panel and Maximum Spa Temperatures -->
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="minExternal">Température minimum externe (°C):</label>
+                <input type="number" id="minExternal" step="0.5" min="0" max="60" required>
+                <small>L'air extérieur doit être au moins à cette température pour autoriser la pompe</small>
+              </div>
+
+              <div class="form-group">
+                <label for="maxSpa">Température maximum du spa (°C):</label>
+                <input type="number" id="maxSpa" step="0.5" min="0" max="50" required>
+                <small>Limite de sécurité - la pompe s'arrête au-dessus</small>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="minPanel">Température minimum des panneaux (°C):</label>
-              <input type="number" id="minPanel" step="0.5" min="0" max="60" required>
-              <small>Les panneaux doivent être au moins à cette température</small>
+            <!-- Group for Temperature Difference and Hysteresis -->
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="tempDiff">Différence de température pour activation (°C):</label>
+                <input type="number" id="tempDiff" step="0.5" min="0" max="20" required>
+                <small>La pompe démarre si Panneau > Spa + cette valeur</small>
+              </div>
+
+              <div class="form-group">
+                <label for="hysteresis">Hystérésis (°C):</label>
+                <input type="number" id="hysteresis" step="0.1" min="0.1" max="5" required>
+                <small>La pompe s'arrête si la différence tombe sous (Seuil - Hystérésis)</small>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label for="maxSpa">Température maximum du spa (°C):</label>
-              <input type="number" id="maxSpa" step="0.5" min="0" max="50" required>
-              <small>Limite de sécurité - la pompe s'arrête au-dessus</small>
-            </div>
+            <!-- Group for Periodic Sampling (Flush) -->
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="sampleInterval">Fréquence de purge (minutes):</label>
+                <input type="number" id="sampleInterval" step="1" min="0" max="1440" required>
+                <small>Intervalle entre activations pour rafraîchir les sondes (0 = désactivé)</small>
+              </div>
 
+              <div class="form-group">
+                <label for="sampleDuration">Durée de purge (secondes):</label>
+                <input type="number" id="sampleDuration" step="1" min="1" max="600" required>
+                <small>Temps de marche de la pompe pour obtenir une lecture réelle</small>
+              </div>
+            </div>
+            
             <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
             <div class="message success" id="configMessage">Paramètres enregistrés!</div>
           </form>
         </div>
-
         <!-- WiFi Configuration Tab -->
         <div class="tab-content" id="tab-wifi">
           <div class="info-box" style="background: #e3f2fd; border-left: 4px solid #2196F3;">
@@ -711,8 +747,11 @@
 
             <div class="form-group">
               <label for="wifiPassword">Mot de passe:</label>
-              <input type="password" id="wifiPassword" maxlength="63">
-              <small>Laissez vide pour ne pas modifier</small>
+              <div style="display: flex; gap: 10px;">
+                <input type="password" id="wifiPassword" maxlength="63" style="flex: 1;" autocomplete="new-password">
+                <button type="button" class="btn btn-secondary" onclick="togglePasswordView('wifiPassword')">👁️</button>
+              </div>
+              <small>Le mot de passe actuel est chargé dans ce champ. Cliquez sur l’œil pour le révéler ou remplacez-le directement.</small>
             </div>
 
             <button type="submit" class="btn btn-primary">💾 Enregistrer WiFi</button>
@@ -895,7 +934,13 @@
                 <tr style="border-bottom: 1px solid #eee;">
                   <td style="padding: 8px; font-family: monospace;"><a href="/data" target="_blank" style="color: #2196F3; text-decoration: none;">/data</a></td>
                   <td style="padding: 8px;"><code>GET</code></td>
-                  <td style="padding: 8px;">Données des capteurs en temps réel</td>
+                  <td style="padding: 8px;">État complet du système (Capteurs + Config active)</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/history" target="_blank" style="color: #2196F3; text-decoration: none;">/history</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Historique des températures (dernières 24h)</td>
                   <td style="padding: 8px;">JSON</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #eee;">
@@ -929,7 +974,7 @@
                   <td style="padding: 8px;">JSON</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #eee;">
-                  <td style="padding: 8px; font-family: monospace;">/wifi/config</td>
+                  <td style="padding: 8px; font-family: monospace;">/wifi</td>
                   <td style="padding: 8px;"><code>POST</code></td>
                   <td style="padding: 8px;">Configuration WiFi</td>
                   <td style="padding: 8px;">JSON</td>
@@ -997,6 +1042,9 @@
               <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
                 <a href="/data" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
                   📊 /data (JSON)
+                </a>
+                <a href="/history" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  📈 /history (JSON)
                 </a>
                 <a href="/sensors" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
                   🔍 /sensors (JSON)
@@ -1078,9 +1126,6 @@
     // Initialize form detection
     setupFormEditingDetection();
 
-    // Filesystem build information
-    const FILESYSTEM_BUILD_DATE = "May 4 2026";
-
     // Update data every 2 seconds
     setInterval(updateData, 2000);
     updateData();
@@ -1094,7 +1139,7 @@
         .then(info => {
           document.getElementById('sysVersion').textContent = info.version;
           document.getElementById('sysBuildDateTime').textContent = info.buildDate + ' ' + info.buildTime;
-          document.getElementById('sysFilesystemDateTime').textContent = FILESYSTEM_BUILD_DATE;
+          document.getElementById('sysFilesystemDateTime').textContent = info.fsBuildDate + ' ' + info.fsBuildTime;
           document.getElementById('sysChipModel').textContent = info.chipModel;
           document.getElementById('sysCpuFreq').textContent = info.cpuFreq;
           document.getElementById('sysFlashSize').textContent = formatBytes(info.flashSize);
@@ -1203,6 +1248,23 @@
       document.getElementById('sysUptime').textContent = uptime;
     }
 
+    function togglePasswordView(inputId) {
+      const input = document.getElementById(inputId);
+      if (!input) {
+        return;
+      }
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function toggleInputVisibility(inputId) {
+      const input = document.getElementById(inputId);
+      if (input.type === "password") {
+        input.type = "text";
+      } else {
+        input.type = "password";
+      }
+    }
+
     function updateData() {
       fetch('/data')
         .then(response => response.json())
@@ -1236,8 +1298,11 @@
 
           // Update config fields only if user is not editing them
           updateInputIfNotFocused('tempDiff', data.tempDiff);
-          updateInputIfNotFocused('minPanel', data.minPanel);
+          updateInputIfNotFocused('hysteresis', data.hysteresis);
+          updateInputIfNotFocused('minExternal', data.minExternal);
           updateInputIfNotFocused('maxSpa', data.maxSpa);
+          updateInputIfNotFocused('sampleInterval', data.sampleInterval);
+          updateInputIfNotFocused('sampleDuration', data.sampleDuration);
 
           // Update WiFi info display
           if (data.wifiSSID) {
@@ -1245,6 +1310,10 @@
             updateIfChanged('currentHostname', data.wifiHostname);
             updateIfChanged('currentIP', data.wifiIP);
             updateIfChanged('currentRSSI', data.wifiRSSI);
+
+            // Update WiFi form values only if user is not currently editing the form
+            updateInputIfNotFocused('wifiPassword', data.wifiPassword || '');
+
             // Pre-fill WiFi form with current SSID (only if user is not editing)
             updateInputIfNotFocused('wifiSSID', data.wifiSSID);
           }
@@ -1290,8 +1359,11 @@
 
       const formData = new FormData();
       formData.append('tempDiff', document.getElementById('tempDiff').value);
-      formData.append('minPanel', document.getElementById('minPanel').value);
+      formData.append('hysteresis', document.getElementById('hysteresis').value);
+      formData.append('minExternal', document.getElementById('minExternal').value);
       formData.append('maxSpa', document.getElementById('maxSpa').value);
+      formData.append('sampleInterval', document.getElementById('sampleInterval').value);
+      formData.append('sampleDuration', document.getElementById('sampleDuration').value);
 
       fetch('/config', {
         method: 'POST',
@@ -1411,7 +1483,10 @@
 
     function selectNetwork(ssid) {
       document.getElementById('wifiSSID').value = ssid;
-      document.getElementById('wifiPassword').focus();
+      const passwordInput = document.getElementById('wifiPassword');
+      if (passwordInput) {
+        passwordInput.focus();
+      }
     }
 
     function setPump(mode) {
@@ -1717,9 +1792,25 @@
               position: 'top'
             },
             tooltip: {
+              usePointStyle: true,
               callbacks: {
                 label: function(context) {
-                  return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '°C';
+                  if (context.dataset.label === 'Pompe ON') {
+                    return ' État: Pompe en marche';
+                  }
+                  return ' ' + context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '°C';
+                },
+                footer: function(tooltipItems) {
+                  let spa = null;
+                  let panel = null;
+                  tooltipItems.forEach(function(item) {
+                    if (item.dataset.label === 'Spa') spa = item.parsed.y;
+                    if (item.dataset.label === 'Panneaux') panel = item.parsed.y;
+                  });
+                  if (spa !== null && panel !== null) {
+                    const diff = panel - spa;
+                    return 'Différentiel: ' + diff.toFixed(1) + '°C';
+                  }
                 }
               }
             }
@@ -1751,7 +1842,7 @@
               },
               ticks: {
                 callback: function(value) {
-                  return value.toFixed(0) + '°C';
+                  return value.toFixed(1) + '°C';
                 }
               },
               position: 'left'

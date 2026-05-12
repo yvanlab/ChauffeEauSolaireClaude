@@ -34,10 +34,13 @@ bool ConfigManager::loadTempConfig(TempConfig& config) {
 
   // Load values from JSON
   config.tempDifferenceThreshold = doc["tempDifferenceThreshold"] | 5.0;
-  config.minPanelTemp = doc["minPanelTemp"] | 25.0;
+  config.hysteresis = doc["hysteresis"] | 1.0;
+  config.minExternalTemp = doc["minExternalTemp"] | 25.0;
   config.maxSpaTemp = doc["maxSpaTemp"] | 40.0;
   config.manualOverride = doc["manualOverride"] | false;
   config.pumpState = doc["pumpState"] | false;
+  config.sampleInterval = doc["sampleInterval"] | 60;
+  config.sampleDuration = doc["sampleDuration"] | 4;
 
   logger.success("Temperature configuration loaded from JSON");
   return true;
@@ -147,10 +150,13 @@ bool ConfigManager::saveTempConfig(const TempConfig& config) {
   JsonDocument doc;
 
   doc["tempDifferenceThreshold"] = config.tempDifferenceThreshold;
-  doc["minPanelTemp"] = config.minPanelTemp;
+  doc["hysteresis"] = config.hysteresis;
+  doc["minExternalTemp"] = config.minExternalTemp;
   doc["maxSpaTemp"] = config.maxSpaTemp;
   doc["manualOverride"] = config.manualOverride;
   doc["pumpState"] = config.pumpState;
+  doc["sampleInterval"] = config.sampleInterval;
+  doc["sampleDuration"] = config.sampleDuration;
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {
@@ -206,10 +212,13 @@ bool ConfigManager::saveTempParams(const TempConfig& config) {
 
   JsonDocument doc;
   doc["tempDifferenceThreshold"] = config.tempDifferenceThreshold;
-  doc["minPanelTemp"] = config.minPanelTemp;
+  doc["hysteresis"] = config.hysteresis;
+  doc["minExternalTemp"] = config.minExternalTemp;
   doc["maxSpaTemp"] = config.maxSpaTemp;
   doc["manualOverride"] = current.manualOverride;  // Keep current
   doc["pumpState"] = current.pumpState;            // Keep current
+  doc["sampleInterval"] = config.sampleInterval;
+  doc["sampleDuration"] = config.sampleDuration;
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {
@@ -235,10 +244,13 @@ bool ConfigManager::savePumpState(const TempConfig& config) {
 
   JsonDocument doc;
   doc["tempDifferenceThreshold"] = current.tempDifferenceThreshold;
-  doc["minPanelTemp"] = current.minPanelTemp;
+  doc["hysteresis"] = current.hysteresis;
+  doc["minExternalTemp"] = current.minExternalTemp;
   doc["maxSpaTemp"] = current.maxSpaTemp;
   doc["manualOverride"] = config.manualOverride;
   doc["pumpState"] = config.pumpState;
+  doc["sampleInterval"] = current.sampleInterval;
+  doc["sampleDuration"] = current.sampleDuration;
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {
@@ -327,8 +339,10 @@ void ConfigManager::printConfig(const SpaConfig& config) {
   Serial.println("\n[Temperature Parameters]");
   Serial.printf("  File: %s\n", TEMP_CONFIG_FILE);
   Serial.printf("  Temp difference threshold: %.1f°C\n", config.temp.tempDifferenceThreshold);
-  Serial.printf("  Min panel temp: %.1f°C\n", config.temp.minPanelTemp);
+  Serial.printf("  Min external temp: %.1f°C\n", config.temp.minExternalTemp);
   Serial.printf("  Max spa temp: %.1f°C\n", config.temp.maxSpaTemp);
+  Serial.printf("  Sample Interval: %d mins\n", config.temp.sampleInterval);
+  Serial.printf("  Sample Duration: %d secs\n", config.temp.sampleDuration);
 
   Serial.println("\n[WiFi Settings]");
   Serial.printf("  File: %s\n", WIFI_CONFIG_FILE);

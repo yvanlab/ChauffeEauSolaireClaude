@@ -15,6 +15,7 @@
 #endif
 
 #include <ESPAsyncWebServer.h>
+#include <stdint.h>
 #include "config.h"
 
 // Forward declaration for sensor data structure
@@ -28,7 +29,7 @@ struct SensorData {
 
 // Historical data point
 struct TempDataPoint {
-  unsigned long timestamp;  // millis() timestamp
+  uint64_t timestamp;  // epoch milliseconds
   float airTemp;
   float spaTemp;
   float panelTemp;
@@ -69,6 +70,9 @@ public:
 
   // Initialize and start the web server
   void begin();
+
+  // Connect to WiFi and setup mDNS
+  void connectWiFi();
 
   // Stop the web server
   void end();

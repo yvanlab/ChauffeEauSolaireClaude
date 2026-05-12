@@ -7,6 +7,9 @@
 #include "config.h"
 #include "webserver.h"
 #include "logger.h"
+#include "time_utils.h"
+#include <esp_task_wdt.h>
+
 /*
 GPIO23	Status LED
 GPIO16	Relay #1
@@ -49,12 +52,21 @@ void setupSensors();
 void readTemperatures();
 void controlPump();
 void setRelay(bool on);
-void connectWiFi();
 void printWelcome();
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // Initialize Task Watchdog Timer (10 seconds timeout)
+  // Compatibility for both older and newer ESP32 Arduino cores
+  #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    esp_task_wdt_config_t wdt_config = { .timeout_ms = 10000, .idle_core_mask = 0, .trigger_panic = true };
+    esp_task_wdt_init(&wdt_config);
+  #else
+    esp_task_wdt_init(10, true);
+  #endif
+  esp_task_wdt_add(NULL);
 
   printWelcome();
 
@@ -87,12 +99,23 @@ void setup() {
   sensors.begin();
   setupSensors();
 
-  // Connect to WiFi and setup mDNS
-  connectWiFi();
+  // Initialize web server object early to access WiFi methods
+  webServer = new WebServerManager(&config, &sensorData, &pumpState);
+
+  // Connect to WiFi and setup mDNS via WebServerManager
+  webServer->connectWiFi();
+
+  // Initialize real time if WiFi is available
+  if (WiFi.status() == WL_CONNECTED) {
+    if (initializeTime()) {
+      logger.success("Real-time clock synchronized successfully");
+    } else {
+      logger.warning("Real-time clock synchronization failed, using uptime-based timestamps");
+    }
+  }
 
   // Setup web server
   Serial.println("\n[Initializing Web Server]");
-  webServer = new WebServerManager(&config, &sensorData, &pumpState);
   webServer->begin();
 
   // Add sensor list endpoint after web server starts
@@ -110,6 +133,8 @@ void setup() {
 }
 
 void loop() {
+  esp_task_wdt_reset(); // Pet the watchdog
+
   static unsigned long lastRead = 0;
 
   // Read temperatures every 2 seconds
@@ -138,9 +163,11 @@ void loop() {
     // Update web server with pump state
     if (webServer) {
       webServer->updatePumpState(pumpState);
-      // Record temperature history (every minute)
-      webServer->recordHistory();
     }
+
+    // Move history recording outside of specific condition if needed
+    // The internal interval check in recordHistory() will handle the 1-minute timing
+    if (webServer) webServer->recordHistory();
 
     // Print status to serial
     Serial.printf("Air: %.1f°C | Spa: %.1f°C | Panel: %.1f°C | Diff: %.1f°C | Pump: %s | Mode: %s\n",
@@ -252,26 +279,62 @@ void readTemperatures() {
 void controlPump() {
   bool shouldActivate = false;
 
+  // Periodic sampling state
+  static unsigned long lastSampleTime = 0;
+  static bool isSampling = false;
+  static unsigned long samplingStartedAt = 0;
+  unsigned long now = millis();
+
   // Pump activation logic:
-  // 1. Panel temperature must be above minimum
+  // 1. External air temperature must be above minimum
   // 2. Spa temperature must be below maximum
   // 3. Panel must be warmer than spa by the threshold amount
 
   float tempDiff = sensorData.panelTemp - sensorData.spaTemp;
 
-  if (sensorData.panelTemp >= config.temp.minPanelTemp &&
+  if (sensorData.airTemp >= config.temp.minExternalTemp &&
       sensorData.spaTemp < config.temp.maxSpaTemp &&
       tempDiff >= config.temp.tempDifferenceThreshold) {
     shouldActivate = true;
   }
 
   // Apply hysteresis: once pump is on, require temperature difference
-  // to drop below (threshold - 1) before turning off.
-  // Panel must still be above minPanelTemp to avoid circulating cold water.
+  // to drop below (threshold - hysteresis) before turning off.
+  // External air must still be above minExternalTemp.
   if (pumpState &&
-      sensorData.panelTemp >= config.temp.minPanelTemp &&
-      tempDiff >= (config.temp.tempDifferenceThreshold - 1.0)) {
+      sensorData.airTemp >= config.temp.minExternalTemp &&
+      tempDiff >= (config.temp.tempDifferenceThreshold - config.temp.hysteresis)) {
     shouldActivate = true;
+  }
+
+  // 3. Periodic Sampling (Flush cycle)
+  // Si la pompe est arrêtée et que la température d'air est favorable
+  if (!shouldActivate && sensorData.airTemp >= config.temp.minExternalTemp && config.temp.sampleInterval > 0) {
+    unsigned long intervalMs = (unsigned long)config.temp.sampleInterval * 60 * 1000;
+    unsigned long durationMs = (unsigned long)config.temp.sampleDuration * 1000;
+
+    if (!isSampling) {
+      // Déclenchement si l'intervalle est écoulé ou au premier démarrage
+      if (lastSampleTime == 0 || (now - lastSampleTime >= intervalMs)) {
+        isSampling = true;
+        samplingStartedAt = now;
+        logger.info("Démarrage du cycle de purge pour mesure réelle");
+      }
+    }
+
+    if (isSampling) {
+      if (now - samplingStartedAt < durationMs) {
+        shouldActivate = true; // Force la pompe ON
+      } else {
+        isSampling = false;
+        lastSampleTime = now;
+        logger.info("Cycle de purge terminé");
+      }
+    }
+  } else if (shouldActivate) {
+    // Si le chauffage démarre normalement, on réinitialise le minuteur de purge
+    isSampling = false;
+    lastSampleTime = now;
   }
 
   // Safety check: force pump off if spa is at or above max temp
@@ -300,54 +363,6 @@ void setRelay(bool on) {
   pumpState = on;
   Serial.printf("Setting relay: %s\n", on ? "ON" : "OFF");
   digitalWrite(RELAY_PIN, pumpState ? HIGH : LOW);
-}
-void connectWiFi() {
-  Serial.println("\n[Connecting to WiFi]");
-  Serial.printf("SSID: %s\n", config.wifi.ssid);
-  Serial.printf("Hostname: %s.local\n", config.wifi.hostname);
-
-  logger.infof("Connecting to WiFi: %s", config.wifi.ssid);
-
-  // Set hostname before connecting
-  WiFi.setHostname(config.wifi.hostname);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(config.wifi.ssid, config.wifi.password);
-
-  int attempts = 0;
-  Serial.print("Connecting");
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  Serial.println();
-
-  if (WiFi.status() == WL_CONNECTED) {
-    logger.successf("WiFi connected - IP: %s", WiFi.localIP().toString().c_str());
-    logger.infof("Signal strength: %d dBm", WiFi.RSSI());
-
-    Serial.print("  IP address: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("  Signal strength: ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-
-    // Start mDNS responder
-    if (MDNS.begin(config.wifi.hostname)) {
-      logger.successf("mDNS started: http://%s.local", config.wifi.hostname);
-
-      // Add service to mDNS-SD
-      MDNS.addService("http", "tcp", 80);
-      Serial.println("  Service added: _http._tcp");
-    } else {
-      logger.error("Failed to start mDNS responder");
-      logger.info("You can still access via IP address");
-    }
-  } else {
-    logger.error("WiFi connection failed!");
-    logger.warning("System will continue without WiFi");
-    logger.warning("Web interface will not be available");
-  }
 }
 
 void printWelcome() {

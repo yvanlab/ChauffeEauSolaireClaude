@@ -1,5 +1,7 @@
 #include "logger.h"
+#include "time_utils.h"
 #include <stdarg.h>
+#include <inttypes.h>
 
 // Global logger instance
 Logger logger;
@@ -30,7 +32,7 @@ const char* Logger::getLevelIcon(LogLevel level) {
 
 void Logger::log(LogLevel level, const String& message) {
   // Add to buffer
-  unsigned long timestamp = millis();
+  uint64_t timestamp = getEpochMillis();
 
   // Remove oldest if at max capacity
   if (logs.size() >= MAX_LOGS) {
@@ -40,13 +42,16 @@ void Logger::log(LogLevel level, const String& message) {
   logs.push_back(LogEntry(timestamp, level, message));
 
   // Also print to serial
-  char timeStr[16];
-  unsigned long seconds = timestamp / 1000;
-  unsigned long minutes = seconds / 60;
-  unsigned long hours = minutes / 60;
+  char timeStr[32];
+  if (!formatLocalTime(timestamp, timeStr, sizeof(timeStr))) {
+    unsigned long fallbackMillis = millis();
+    unsigned long seconds = fallbackMillis / 1000;
+    unsigned long minutes = seconds / 60;
+    unsigned long hours = minutes / 60;
 
-  snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu:%02lu",
-           hours % 24, minutes % 60, seconds % 60);
+    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu:%02lu",
+             hours % 24, minutes % 60, seconds % 60);
+  }
 
   Serial.printf("[%s] %s %s\n",
                 timeStr,
@@ -119,15 +124,20 @@ String Logger::getLogsJSON(int maxEntries) {
 
     const LogEntry& entry = logs[i];
 
-    // Format timestamp
-    unsigned long seconds = entry.timestamp / 1000;
-    unsigned long minutes = seconds / 60;
-    unsigned long hours = minutes / 60;
-    char timeStr[16];
-    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu:%02lu",
-             hours % 24, minutes % 60, seconds % 60);
+    char timeStr[32];
+    if (!formatLocalTime(entry.timestamp, timeStr, sizeof(timeStr))) {
+      unsigned long seconds = entry.timestamp / 1000;
+      unsigned long minutes = seconds / 60;
+      unsigned long hours = minutes / 60;
+      snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu:%02lu",
+               hours % 24, minutes % 60, seconds % 60);
+    }
+
+    char timestampStr[32];
+    snprintf(timestampStr, sizeof(timestampStr), "%" PRIu64, entry.timestamp);
 
     json += "{";
+    json += "\"timestamp\":" + String(timestampStr) + ",";
     json += "\"time\":\"" + String(timeStr) + "\",";
     json += "\"level\":\"" + String(getLevelString(entry.level)) + "\",";
     json += "\"icon\":\"" + String(getLevelIcon(entry.level)) + "\",";

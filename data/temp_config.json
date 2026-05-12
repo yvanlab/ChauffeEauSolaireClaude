@@ -1,7 +1,9 @@
 {
-  "tempDifferenceThreshold": 5.0,
-  "minPanelTemp": 25.0,
+  "tempDifferenceThreshold": 10.0,
+  "minExternalTemp": 25.0,
   "maxSpaTemp": 40.0,
   "manualOverride": false,
-  "pumpState": false
+  "pumpState": false,
+  "sampleInterval": 60,
+  "sampleDuration": 4
 }

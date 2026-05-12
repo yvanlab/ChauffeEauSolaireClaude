@@ -1,32 +1,18 @@
-# PlatformIO
+# PlatformIO artifacts
 .pio/
 .vscode/
-.clang_complete
-.gcc-flags.json
 
 # Build artifacts
-*.o
-*.elf
 *.bin
+*.elf
+*.o
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-simulation_logs.json
+# Sensitive configuration files
+# It is best practice to keep these out of public repositories
+data/wifi_config.json
+data/temp_config.json
 
-# IDE
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
+# OS files
 .DS_Store
 Thumbs.db
-
-# Sensitive data (user should configure locally)
-data/wifi_config.json
-
-# Logs
-*.log
+desktop.ini

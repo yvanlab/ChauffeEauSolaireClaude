@@ -6,6 +6,7 @@
 *.bin
 *.elf
 *.o
+*.pyc
 
 # Sensitive configuration files
 # It is best practice to keep these out of public repositories

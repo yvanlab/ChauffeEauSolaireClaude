@@ -137,6 +137,11 @@ void loop() {
 
   static unsigned long lastRead = 0;
 
+  // Check WiFi connection status periodically
+  if (webServer) {
+    webServer->checkWiFiConnection();
+  }
+
   // Read temperatures every 2 seconds
   if (millis() - lastRead > 2000) {
     lastRead = millis();

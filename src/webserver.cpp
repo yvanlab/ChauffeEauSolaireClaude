@@ -28,6 +28,35 @@ extern const char* FIRMWARE_VERSION;
 extern const char* BUILD_DATE;
 extern const char* BUILD_TIME;
 
+// WiFi event handler for connection monitoring
+static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
+  switch(event) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      logger.info("WiFi station started");
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      logger.success("WiFi connected to AP");
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
+      logger.successf("WiFi got IP: %s", WiFi.localIP().toString().c_str());
+      logger.infof("Signal strength: %d dBm", WiFi.RSSI());
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      logger.warning("WiFi disconnected - auto-reconnect will attempt to restore connection");
+      break;
+
+    case ARDUINO_EVENT_WIFI_STA_LOST_IP:
+      logger.error("WiFi lost IP address");
+      break;
+
+    default:
+      break;
+  }
+}
+
 WebServerManager::WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump)
   : config(cfg), sensorData(data), pumpState(pump) {
   server = new AsyncWebServer(80);
@@ -37,6 +66,7 @@ WebServerManager::WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump)
   historyCount = 0;
   historyIndex = 0;
   lastHistoryUpdate = 0;
+  lastWiFiCheck = 0;
 }
 
 WebServerManager::~WebServerManager() {
@@ -291,9 +321,17 @@ void WebServerManager::connectWiFi() {
 
   logger.infof("Connecting to WiFi: %s", config->wifi.ssid);
 
+  // Register WiFi event handler for connection monitoring
+  WiFi.onEvent(onWiFiEvent);
+
   // Set hostname before connecting
   WiFi.setHostname(config->wifi.hostname);
   WiFi.mode(WIFI_STA);
+
+  // Enable auto-reconnect to handle connection drops
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
   WiFi.begin(config->wifi.ssid, config->wifi.password);
 
   int attempts = 0;
@@ -336,6 +374,42 @@ void WebServerManager::connectWiFi() {
 void WebServerManager::end() {
   server->end();
   Serial.println("HTTP server stopped");
+}
+
+void WebServerManager::checkWiFiConnection() {
+  unsigned long now = millis();
+
+  // Check WiFi status every 30 seconds
+  if (now - lastWiFiCheck < 30000) {
+    return;
+  }
+
+  lastWiFiCheck = now;
+
+  // If disconnected, attempt reconnection
+  if (WiFi.status() != WL_CONNECTED) {
+    logger.warning("WiFi disconnected - attempting reconnect");
+    WiFi.reconnect();
+
+    // Wait briefly for reconnection (non-blocking with timeout)
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+      esp_task_wdt_reset();
+      delay(500);
+      attempts++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      logger.successf("WiFi reconnected - IP: %s", WiFi.localIP().toString().c_str());
+
+      // Re-announce mDNS after reconnection
+      if (MDNS.begin(config->wifi.hostname)) {
+        MDNS.addService("http", "tcp", 80);
+      }
+    } else {
+      logger.error("WiFi reconnection failed - will retry in 30 seconds");
+    }
+  }
 }
 
 void WebServerManager::updateSensorData(float air, float spa, float panel) {

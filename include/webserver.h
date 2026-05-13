@@ -53,6 +53,9 @@ private:
   int historyIndex;
   unsigned long lastHistoryUpdate;
 
+  // WiFi monitoring
+  unsigned long lastWiFiCheck;
+
   // Route handlers
   void handleRoot(AsyncWebServerRequest *request);
   void handleData(AsyncWebServerRequest *request);
@@ -73,6 +76,9 @@ public:
 
   // Connect to WiFi and setup mDNS
   void connectWiFi();
+
+  // Check WiFi connection status and reconnect if needed
+  void checkWiFiConnection();
 
   // Stop the web server
   void end();

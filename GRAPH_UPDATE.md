@@ -109,7 +109,7 @@ Air: 22.5°C
 
 Shows:
 - Temperature value with sensor name
-- Date (DD/MM format)
+- Date (dd/MM format)
 - Time (HH:mm 24-hour format)
 
 ---

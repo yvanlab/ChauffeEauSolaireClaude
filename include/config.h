@@ -37,6 +37,7 @@ struct TempConfig {
   bool pumpState;                 // Current pump state (for manual mode persistence)
   int sampleInterval;             // Frequency of pump activation for sampling (minutes)
   int sampleDuration;             // Duration of pump activation for sampling (seconds)
+  float totalPumpHours;           // Cumulative runtime in hours
 
   // Constructor with default values
   TempConfig() {
@@ -48,6 +49,7 @@ struct TempConfig {
     pumpState = false;
     sampleInterval = 60;
     sampleDuration = 120;
+    totalPumpHours = 0.0;
   }
 };
 
@@ -83,6 +85,9 @@ private:
 
 public:
   ConfigManager();
+
+  // Initialize filesystem and load all configurations
+  bool begin(SpaConfig& config);
 
   // Load temperature configuration from JSON file
   bool loadTempConfig(TempConfig& config);

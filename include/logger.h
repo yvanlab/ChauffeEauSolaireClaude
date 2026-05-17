@@ -25,7 +25,7 @@ struct LogEntry {
 
 class Logger {
 private:
-  static const int MAX_LOGS = 100;  // Keep last 100 log entries
+  static const int MAX_LOGS = 20;  // Keep last 20 log entries
   std::vector<LogEntry> logs;
 
   const char* getLevelString(LogLevel level);

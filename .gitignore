@@ -1,19 +1,18 @@
-# PlatformIO artifacts
-.pio/
+# PlatformIO build and environment files
+.pio
 .vscode/
+libdeps/
 
-# Build artifacts
-*.bin
-*.elf
-*.o
-*.pyc
-
-# Sensitive configuration files
-# It is best practice to keep these out of public repositories
+# Sensitive data - Do not share your WiFi credentials
 data/wifi_config.json
 data/temp_config.json
 
 # OS files
 .DS_Store
 Thumbs.db
-desktop.ini
+
+# Compilation artifacts
+*.bin
+*.elf
+*.hex
+*.map

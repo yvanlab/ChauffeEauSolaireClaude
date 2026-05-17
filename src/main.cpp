@@ -18,7 +18,7 @@ GPIO25	Relay #3
 GPIO26	Relay #4
 */
 // Version information
-const char* FIRMWARE_VERSION = "2.4";
+const char* FIRMWARE_VERSION = "3.2";
 const char* BUILD_DATE = __DATE__;
 const char* BUILD_TIME = __TIME__;
 
@@ -44,6 +44,13 @@ SensorData sensorData;
 // Pump state
 bool pumpState = false;
 
+// Daily Stats Tracking
+float dayMinSpa = 100.0;
+float dayMaxSpa = -100.0;
+float dayPumpHours = 0.0;
+int lastSavedDay = -1;
+RTC_DATA_ATTR int lastRebootDay = -1;
+
 // Web server
 WebServerManager* webServer = nullptr;
 
@@ -53,6 +60,29 @@ void readTemperatures();
 void controlPump();
 void setRelay(bool on);
 void printWelcome();
+const char* getResetReason();
+void printResetReason();
+
+const char* getResetReason() {
+  esp_reset_reason_t reason = esp_reset_reason();
+  switch (reason) {
+    case ESP_RST_POWERON:   return "Mise sous tension";
+    case ESP_RST_SW:        return "Reset logiciel (esp_restart)";
+    case ESP_RST_PANIC:     return "Crash / Panic (Manque de RAM?)";
+    case ESP_RST_INT_WDT:   return "Watchdog Interruption (Code bloqué)";
+    case ESP_RST_TASK_WDT:  return "Task Watchdog (Boucle trop longue)";
+    case ESP_RST_BROWNOUT:  return "Brownout (Tension instable)";
+    default:                return "Autre / Inconnu";
+  }
+}
+
+void printResetReason() {
+  Serial.println("\n--- DIAGNOSTICS DE REDÉMARRAGE ---");
+  Serial.printf("Raison du reset: %s\n", getResetReason());
+  Serial.printf("Mémoire vive (Heap) libre: %u octets\n", ESP.getFreeHeap());
+  Serial.printf("Minimum libre depuis boot: %u octets\n", ESP.getMinFreeHeap());
+  Serial.println("----------------------------------\n");
+}
 
 void setup() {
   Serial.begin(115200);
@@ -68,6 +98,7 @@ void setup() {
   #endif
   esp_task_wdt_add(NULL);
 
+  printResetReason();
   printWelcome();
 
 
@@ -75,23 +106,8 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW); // Start with pump off
 
-  // Mount LittleFS first (required for loading config files)
-  if (!LittleFS.begin(true)) {
-    logger.error("LittleFS mount failed!");
-  } else {
-    logger.success("LittleFS mounted successfully");
-  }
-
-  // Load configuration from JSON files
-  Serial.println("\n[Initializing Configuration]");
-  logger.info("Loading configuration from JSON files");
-  if (configManager.loadAll(config)) {
-    configManager.printConfig(config);
-    logger.success("Configuration loaded successfully");
-  } else {
-    logger.warning("Failed to load config, using defaults");
-  }
-
+  // Initialize filesystem and load configuration
+  configManager.begin(config);
 
   // Setup temperature sensors
   Serial.println("\n[Initializing Temperature Sensors]");
@@ -104,15 +120,6 @@ void setup() {
 
   // Connect to WiFi and setup mDNS via WebServerManager
   webServer->connectWiFi();
-
-  // Initialize real time if WiFi is available
-  if (WiFi.status() == WL_CONNECTED) {
-    if (initializeTime()) {
-      logger.success("Real-time clock synchronized successfully");
-    } else {
-      logger.warning("Real-time clock synchronization failed, using uptime-based timestamps");
-    }
-  }
 
   // Setup web server
   Serial.println("\n[Initializing Web Server]");
@@ -144,8 +151,47 @@ void loop() {
 
   // Read temperatures every 2 seconds
   if (millis() - lastRead > 2000) {
-    lastRead = millis();
+    unsigned long nowMillis = millis();
+    unsigned long delta = nowMillis - lastRead;
+    lastRead = nowMillis;
+
     readTemperatures();
+
+    // Update Pump Runtime
+    if (pumpState) {
+      config.temp.totalPumpHours += (float)delta / 3600000.0f;
+      dayPumpHours += (float)delta / 3600000.0f;
+    }
+
+    // Update Daily Extremes
+    if (sensorData.spaTemp > 0.1 && sensorData.spaTemp < 90.0) {
+        if (sensorData.spaTemp < dayMinSpa) dayMinSpa = sensorData.spaTemp;
+        if (sensorData.spaTemp > dayMaxSpa) dayMaxSpa = sensorData.spaTemp;
+    }
+
+    // Check for 11 PM (23:00) to save daily stats
+    time_t now = time(nullptr);
+    struct tm* timeinfo = localtime(&now);
+    // Only save if the clock is synchronized (Year > 2020) and it's 11 PM
+    if (timeinfo->tm_year > 120 && timeinfo->tm_hour == 23 && timeinfo->tm_mday != lastSavedDay) {
+        if (webServer->saveDailyStats(dayMinSpa, dayMaxSpa, dayPumpHours)) {
+            lastSavedDay = timeinfo->tm_mday;
+            // Reset for tomorrow
+            dayMinSpa = 100.0;
+            dayMaxSpa = -100.0;
+            dayPumpHours = 0.0;
+            // configManager.saveTempConfig(config.temp); // Persist runtime hours
+            logger.success("Daily extremes saved for 23:00");
+        }
+    }
+
+    // Check for 01:00 AM to perform a scheduled reboot
+    if (timeinfo->tm_year > 120 && timeinfo->tm_hour == 1 && timeinfo->tm_mday != lastRebootDay) {
+        lastRebootDay = timeinfo->tm_mday;
+        logger.warning("Scheduled daily reboot (01:00 AM)");
+        delay(1000); // Give time for the log to be processed
+        ESP.restart();
+    }
 
     // Update web server with latest sensor data
     if (webServer) {

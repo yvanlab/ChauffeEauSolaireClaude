@@ -36,9 +36,14 @@ struct TempDataPoint {
   bool pumpState;
 };
 
-// Historical data buffer (24 hours, 1 point per minute = 1440 points max)
-#define MAX_HISTORY_POINTS 1440
-#define HISTORY_INTERVAL_MS 60000  // 1 minute
+// Tiered History Configuration
+// Recent: 1 minute samples for the last 2 hours = 120 points
+#define RECENT_HISTORY_POINTS 120
+#define RECENT_HISTORY_INTERVAL_MS 60000 
+
+// Archive: 30 minute samples for the rest of the day (approx 24h) = 48 points
+#define ARCHIVE_HISTORY_POINTS 48
+#define ARCHIVE_HISTORY_INTERVAL_MS 1800000 
 
 class WebServerManager {
 private:
@@ -47,11 +52,16 @@ private:
   SensorData* sensorData;
   bool* pumpState;
 
-  // Historical data storage
-  TempDataPoint* historyBuffer;
-  int historyCount;
-  int historyIndex;
-  unsigned long lastHistoryUpdate;
+  // Dual-buffer system for tiered sampling
+  TempDataPoint recentHistoryBuffer[RECENT_HISTORY_POINTS];
+  int recentHistoryCount;
+  int recentHistoryIndex;
+  unsigned long lastRecentHistoryUpdate;
+
+  TempDataPoint archiveHistoryBuffer[ARCHIVE_HISTORY_POINTS];
+  int archiveHistoryCount;
+  int archiveHistoryIndex;
+  unsigned long lastArchiveHistoryUpdate;
 
   // WiFi monitoring
   unsigned long lastWiFiCheck;
@@ -66,6 +76,8 @@ private:
   void handleHistory(AsyncWebServerRequest *request);
   void handleSensorMapping(AsyncWebServerRequest *request);
   void handleSensors(AsyncWebServerRequest *request);
+  void handleDailyHistory(AsyncWebServerRequest *request);
+  void handleDownloadDaily(AsyncWebServerRequest *request);
 
 public:
   WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump);
@@ -91,6 +103,9 @@ public:
 
   // Record current temperatures to history (called periodically)
   void recordHistory();
+
+  // Record daily statistics to filesystem
+  bool saveDailyStats(float minT, float maxT, float hours);
 
   // Get the server instance for adding custom routes
   AsyncWebServer* getServer() { return server; }

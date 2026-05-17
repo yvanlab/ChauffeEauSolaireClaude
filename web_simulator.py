@@ -22,12 +22,24 @@ class SystemState:
         self.pump_state = False
         self.manual_override = False
         self.temp_diff = 5.0
-        self.min_panel = 25.0
-        self.max_spa = 40.0
+        self.hysteresis = 1.0
+        self.min_external = 20.0
+        self.max_spa = 38.0
+        self.sample_interval = 60
+        self.sample_duration = 30
+        self.air_offset = 0.0
+        self.spa_offset = 0.0
+        self.panel_offset = 0.0
         self.wifi_ssid = "freebox"
         self.wifi_hostname = "chauffeSpa"
+        self.total_pump_hours = 124.52
         self.logs = []
         self.history = []
+        self.daily_history = []
+        self.day_min_spa = 100.0
+        self.day_max_spa = -100.0
+        self.day_pump_hours = 0.0
+        self.last_saved_day = -1
         # Simulated sensors with unique addresses
         self.sensors = [
             {"address": "28-FF-64-1E-03-15-01-9A", "role": "air", "temp": 20.5},
@@ -37,6 +49,7 @@ class SystemState:
         self.use_sensor_mapping = False
         self.add_log("OK", "System simulator started")
         self._generate_initial_history()
+        self._generate_daily_history()
 
     def add_log(self, level, message):
         entry = {
@@ -75,7 +88,7 @@ class SystemState:
             panel_temp = panel_base + random.uniform(-2, 2)
 
             # Simulate pump activation: ON when panel > spa + 5°C
-            pump_on = panel_temp > (spa_temp + 5.0) and panel_temp > 25.0
+            pump_on = panel_temp > (spa_temp + self.temp_diff) and panel_temp > self.min_external
 
             self.history.append({
                 "t": timestamp,
@@ -89,7 +102,30 @@ class SystemState:
         if len(self.history) > 1440:
             self.history = self.history[-1440:]
 
+    def _generate_daily_history(self):
+        """Generate 90 days of min/max stats for the new history page"""
+        now = time.time()
+        for i in range(90, 0, -1):
+            timestamp = now - (i * 86400)
+            date_str = time.strftime("%Y-%m-%d", time.localtime(timestamp))
+            
+            # Simulate seasonal variation (warmer 45 days ago)
+            seasonal_factor = 1.0 - abs(45 - i) / 90.0
+            base_temp = 25.0 + (10.0 * seasonal_factor)
+            
+            min_t = base_temp + random.uniform(-2, 0)
+            max_t = base_temp + random.uniform(2, 6)
+            hours = random.uniform(0.5, 8.0)
+            
+            self.daily_history.append({
+                "d": date_str,
+                "min": round(min_t, 1),
+                "max": round(max_t, 1),
+                "c": round(hours, 2)
+            })
+
     def update_temps(self):
+        prev_pump = self.pump_state
         # Simulate temperature variations
         self.air_temp += random.uniform(-0.2, 0.2)
         self.spa_temp += random.uniform(-0.1, 0.1)
@@ -100,22 +136,54 @@ class SystemState:
         self.spa_temp = max(15, min(45, self.spa_temp))
         self.panel_temp = max(10, min(60, self.panel_temp))
 
+        # Update simulation pump state if in auto mode
+        if not self.manual_override:
+            self.pump_state = (self.panel_temp > (self.spa_temp + self.temp_diff) and
+                              self.panel_temp > self.min_external and
+                              self.spa_temp < self.max_spa)
+
+        # Update pump runtime in simulator (approximate)
+        if self.pump_state:
+            self.total_pump_hours += (2.0 / 3600.0)
+            self.day_pump_hours += (2.0 / 3600.0)
+
+        # Update daily extremes
+        if 0.1 < self.spa_temp < 90.0:
+            if self.spa_temp < self.day_min_spa: self.day_min_spa = self.spa_temp
+            if self.spa_temp > self.day_max_spa: self.day_max_spa = self.spa_temp
+
+        # Simulate 11 PM save logic
+        current_struct = time.localtime()
+        if current_struct.tm_hour == 23 and current_struct.tm_mday != self.last_saved_day:
+            date_str = time.strftime("%Y-%m-%d")
+            self.daily_history.append({
+                "d": date_str, 
+                "min": round(self.day_min_spa, 1), 
+                "max": round(self.day_max_spa, 1),
+                "c": round(self.day_pump_hours, 2)
+            })
+            self.last_saved_day = current_struct.tm_mday
+            self.day_min_spa = 100.0
+            self.day_max_spa = -100.0
+            self.day_pump_hours = 0.0
+            self.add_log("OK", f"Daily extremes saved for {date_str}")
+
         # Update sensor temps
         for sensor in self.sensors:
             if sensor["role"] == "air":
-                sensor["temp"] = round(self.air_temp, 1)
+                sensor["temp"] = round(self.air_temp - self.air_offset, 1)
             elif sensor["role"] == "spa":
-                sensor["temp"] = round(self.spa_temp, 1)
+                sensor["temp"] = round(self.spa_temp - self.spa_offset, 1)
             elif sensor["role"] == "panel":
-                sensor["temp"] = round(self.panel_temp, 1)
+                sensor["temp"] = round(self.panel_temp - self.panel_offset, 1)
 
         # Add to history (simulate 1-minute recording)
         current_time = int(time.time() * 1000)
         if not self.history or (current_time - self.history[-1]["t"]) >= 60000:
             # Determine pump state
-            pump_on = (self.panel_temp > (self.spa_temp + 5.0) and
-                      self.panel_temp > 25.0 and
-                      self.spa_temp < 40.0)
+            pump_on = (self.panel_temp > (self.spa_temp + self.temp_diff) and
+                      self.panel_temp > self.min_external and
+                      self.spa_temp < self.max_spa)
 
             self.history.append({
                 "t": current_time,
@@ -143,6 +211,10 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         if parsed_path.path == '/' or parsed_path.path == '/index.html':
             self.serve_file('data/index.html', 'text/html')
 
+        # Serve history3m.html
+        elif parsed_path.path == '/history3m':
+            self.serve_file('data/history3m.html', 'text/html')
+
         # Sensor data endpoint
         elif parsed_path.path == '/data':
             state.update_temps()
@@ -152,12 +224,18 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 "panelTemp": round(state.panel_temp, 1),
                 "pumpState": state.pump_state,
                 "tempDiff": state.temp_diff,
-                "minPanel": state.min_panel,
+                "hysteresis": state.hysteresis,
+                "minExternal": state.min_external,
                 "maxSpa": state.max_spa,
+                "sampleInterval": state.sample_interval,
+                "sampleDuration": state.sample_duration,
                 "manualOverride": state.manual_override,
+                "totalPumpHours": round(state.total_pump_hours, 2),
+                "dayPumpHours": round(state.day_pump_hours, 2),
                 "wifiSSID": state.wifi_ssid,
+                "wifiPassword": "password123",
                 "wifiHostname": state.wifi_hostname,
-                "wifiIP": "127.0.0.1",
+                "wifiIP": "192.168.1.50",
                 "wifiRSSI": -63
             }
             self.send_json(data)
@@ -180,6 +258,8 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 "version": "2.4",
                 "buildDate": "Apr 20 2026",
                 "buildTime": "12:00:00",
+                "fsBuildDate": "Apr 20 2026",
+                "fsBuildTime": "12:05:00",
                 "chipModel": "ESP32-SIMULATOR",
                 "cpuFreq": 240,
                 "flashSize": 4194304,
@@ -229,6 +309,21 @@ class SimulatorHandler(BaseHTTPRequestHandler):
             }
             self.send_json(history_data)
 
+        # Daily history endpoint (JSON)
+        elif parsed_path.path == '/history/daily':
+            self.send_json({"points": state.daily_history})
+
+        # Daily history CSV download
+        elif parsed_path.path == '/history/daily/csv':
+            csv_content = "Date,Min,Max,Heures_Pompe\n"
+            for p in state.daily_history:
+                csv_content += f"{p['d']},{p['min']},{p['max']},{p['c']}\n"
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/csv')
+            self.send_header('Content-Disposition', 'attachment; filename=daily_stats.csv')
+            self.end_headers()
+            self.wfile.write(csv_content.encode('utf-8'))
+
         # Sensors list endpoint
         elif parsed_path.path == '/sensors':
             state.update_temps()
@@ -238,7 +333,8 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                         "index": i,
                         "address": sensor["address"],
                         "role": sensor["role"],
-                        "temp": sensor["temp"]
+                        "temp": sensor["temp"],
+                        "offset": state.air_offset if sensor["role"] == "air" else (state.spa_offset if sensor["role"] == "spa" else state.panel_offset)
                     }
                     for i, sensor in enumerate(state.sensors)
                 ],
@@ -260,10 +356,16 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         if parsed_path.path == '/config':
             if 'tempDiff' in params:
                 state.temp_diff = float(params['tempDiff'][0])
-            if 'minPanel' in params:
-                state.min_panel = float(params['minPanel'][0])
+            if 'hysteresis' in params:
+                state.hysteresis = float(params['hysteresis'][0])
+            if 'minExternal' in params:
+                state.min_external = float(params['minExternal'][0])
             if 'maxSpa' in params:
                 state.max_spa = float(params['maxSpa'][0])
+            if 'sampleInterval' in params:
+                state.sample_interval = int(params['sampleInterval'][0])
+            if 'sampleDuration' in params:
+                state.sample_duration = int(params['sampleDuration'][0])
             state.add_log("OK", f"Temperature config updated: diff={state.temp_diff}")
             self.send_text("Configuration saved")
 
@@ -300,8 +402,11 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         # Reset config
         elif parsed_path.path == '/reset':
             state.temp_diff = 5.0
-            state.min_panel = 25.0
-            state.max_spa = 40.0
+            state.hysteresis = 1.0
+            state.min_external = 20.0
+            state.max_spa = 38.0
+            state.sample_interval = 60
+            state.sample_duration = 30
             state.add_log("WARN", "Configuration reset to defaults")
             self.send_text("Configuration reset")
 
@@ -322,6 +427,10 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                         sensor['role'] = 'panel'
 
                 state.use_sensor_mapping = True
+                if 'airOffset' in params: state.air_offset = float(params['airOffset'][0])
+                if 'spaOffset' in params: state.spa_offset = float(params['spaOffset'][0])
+                if 'panelOffset' in params: state.panel_offset = float(params['panelOffset'][0])
+
                 state.add_log("OK", f"Sensor mapping updated")
                 self.send_text("Sensor mapping saved - restart required")
             else:
@@ -331,6 +440,12 @@ class SimulatorHandler(BaseHTTPRequestHandler):
         elif parsed_path.path == '/restart':
             state.add_log("WARN", "Restart requested (simulated)")
             self.send_text("Restarting ESP32...")
+
+        # OTA Update endpoints
+        elif parsed_path.path == '/update/firmware' or parsed_path.path == '/update/filesystem':
+            file_type = "firmware" if "firmware" in parsed_path.path else "filesystem"
+            state.add_log("OK", f"Simulated {file_type} update successful")
+            self.send_text(f"{file_type.capitalize()} updated")
 
         else:
             self.send_404()

@@ -570,6 +570,7 @@
           Pompe: <span id="pumpStatus">Arrêtée</span>
         </h3>
         <p id="pumpMode" style="margin-top: 10px; color: #666;">Mode: Automatique</p>
+        <p style="margin-top: 5px; color: #666; font-size: 0.9em;">Cumul fonctionnement: <strong id="totalPumpHours">--</strong> h</p>
       </div>
 
       <!-- Manual Control -->
@@ -633,6 +634,7 @@
 
           <div style="margin-top: 15px;">
             <button class="btn btn-primary" onclick="refreshChart()">🔄 Actualiser le graphique</button>
+            <a href="/history3m" class="btn btn-secondary" style="text-decoration:none;">📅 Historique 3 mois</a>
           </div>
         </div>
 
@@ -768,6 +770,10 @@
               <tr style="border-bottom: 1px solid #ddd;">
                 <td style="padding: 8px; font-weight: 600;">Version:</td>
                 <td style="padding: 8px;" id="sysVersion">--</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #ddd;">
+                <td style="padding: 8px; font-weight: 600;">Raison du démarrage:</td>
+                <td style="padding: 8px; color: #dc3545; font-weight: 600;" id="sysResetReason">--</td>
               </tr>
               <tr style="border-bottom: 1px solid #ddd;">
                 <td style="padding: 8px; font-weight: 600;">Date et heure de compilation:</td>
@@ -944,6 +950,18 @@
                   <td style="padding: 8px;">JSON</td>
                 </tr>
                 <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/history/daily" target="_blank" style="color: #2196F3; text-decoration: none;">/history/daily</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Historique journalier (Min/Max/Heures)</td>
+                  <td style="padding: 8px;">JSON</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                  <td style="padding: 8px; font-family: monospace;"><a href="/history/daily/csv" target="_blank" style="color: #2196F3; text-decoration: none;">/history/daily/csv</a></td>
+                  <td style="padding: 8px;"><code>GET</code></td>
+                  <td style="padding: 8px;">Téléchargement de l'historique journalier</td>
+                  <td style="padding: 8px;">CSV</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
                   <td style="padding: 8px; font-family: monospace;"><a href="/sensors" target="_blank" style="color: #2196F3; text-decoration: none;">/sensors</a></td>
                   <td style="padding: 8px;"><code>GET</code></td>
                   <td style="padding: 8px;">Liste des capteurs DS18B20 détectés</td>
@@ -1046,6 +1064,9 @@
                 <a href="/history" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
                   📈 /history (JSON)
                 </a>
+                <a href="/history/daily" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
+                  📅 /history/daily (JSON)
+                </a>
                 <a href="/sensors" target="_blank" class="btn btn-success btn-small" style="text-decoration: none; text-align: center;">
                   🔍 /sensors (JSON)
                 </a>
@@ -1138,6 +1159,7 @@
         .then(response => response.json())
         .then(info => {
           document.getElementById('sysVersion').textContent = info.version;
+          document.getElementById('sysResetReason').textContent = info.resetReason;
           document.getElementById('sysBuildDateTime').textContent = info.buildDate + ' ' + info.buildTime;
           document.getElementById('sysFilesystemDateTime').textContent = info.fsBuildDate + ' ' + info.fsBuildTime;
           document.getElementById('sysChipModel').textContent = info.chipModel;
@@ -1273,6 +1295,7 @@
           updateIfChanged('airTemp', data.airTemp.toFixed(1) + '°C');
           updateIfChanged('spaTemp', data.spaTemp.toFixed(1) + '°C');
           updateIfChanged('panelTemp', data.panelTemp.toFixed(1) + '°C');
+          updateIfChanged('totalPumpHours', data.totalPumpHours.toFixed(2));
 
           const pumpIndicator = document.getElementById('pumpIndicator');
           const pumpStatus = document.getElementById('pumpStatus');
@@ -1737,7 +1760,7 @@
               stepped: true,
               fill: true,
               pointRadius: 0,
-              pointHitRadius: 0,
+              pointHitRadius: 20,
               order: 10,
               yAxisID: 'y-pump'
             },
@@ -1749,7 +1772,7 @@
               borderWidth: 2,
               tension: 0.4,
               pointRadius: 0,
-              pointHitRadius: 10,
+              pointHitRadius: 20,
               order: 1,
               yAxisID: 'y'
             },
@@ -1761,7 +1784,7 @@
               borderWidth: 2,
               tension: 0.4,
               pointRadius: 0,
-              pointHitRadius: 10,
+              pointHitRadius: 20,
               order: 2,
               yAxisID: 'y'
             },
@@ -1773,7 +1796,7 @@
               borderWidth: 2,
               tension: 0.4,
               pointRadius: 0,
-              pointHitRadius: 10,
+              pointHitRadius: 20,
               order: 3,
               yAxisID: 'y'
             }
@@ -1784,7 +1807,8 @@
           maintainAspectRatio: false,
           interaction: {
             mode: 'index',
-            intersect: false
+            intersect: false,
+            axis: 'x'
           },
           plugins: {
             legend: {
@@ -1792,25 +1816,29 @@
               position: 'top'
             },
             tooltip: {
+              enabled: true,
               usePointStyle: true,
               callbacks: {
                 label: function(context) {
+                  if (context.parsed.y === null || context.parsed.y === undefined) return null;
+                  const value = context.parsed.y;
                   if (context.dataset.label === 'Pompe ON') {
-                    return ' État: Pompe en marche';
+                    return value === 1 ? ' État: Pompe en marche' : '';
                   }
-                  return ' ' + context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '°C';
+                  return ' ' + context.dataset.label + ': ' + value.toFixed(1) + '°C';
                 },
                 footer: function(tooltipItems) {
                   let spa = null;
                   let panel = null;
                   tooltipItems.forEach(function(item) {
-                    if (item.dataset.label === 'Spa') spa = item.parsed.y;
-                    if (item.dataset.label === 'Panneaux') panel = item.parsed.y;
+                    if (item.dataset.label === 'Spa' && item.parsed && item.parsed.y !== null) spa = item.parsed.y;
+                    if (item.dataset.label === 'Panneaux' && item.parsed && item.parsed.y !== null) panel = item.parsed.y;
                   });
                   if (spa !== null && panel !== null) {
                     const diff = panel - spa;
                     return 'Différentiel: ' + diff.toFixed(1) + '°C';
                   }
+                  return '';
                 }
               }
             }
@@ -1823,7 +1851,7 @@
                 displayFormats: {
                   hour: 'HH:mm'
                 },
-                tooltipFormat: 'DD/MM HH:mm'
+                tooltipFormat: 'dd/MM HH:mm'
               },
               title: {
                 display: true,

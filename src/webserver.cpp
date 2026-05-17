@@ -10,6 +10,8 @@
 #include <Update.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
+#include <vector> // Required for std::vector
+#include <algorithm> // Required for std::sort
 
 // Forward declarations
 bool parseAddress(const String& addrStr, uint8_t* addr);
@@ -17,9 +19,11 @@ bool parseAddress(const String& addrStr, uint8_t* addr);
 // External sensor variables (defined in main.cpp)
 extern DallasTemperature sensors;
 extern int sensorCount;
+extern float dayPumpHours;
 extern uint8_t airSensor[8], spaSensor[8], panelSensor[8];
 
 // External configuration manager (defined in main.cpp)
+extern const char* getResetReason();
 extern ConfigManager configManager;
 extern void setRelay(bool on);
 
@@ -62,19 +66,20 @@ WebServerManager::WebServerManager(SpaConfig* cfg, SensorData* data, bool* pump)
   server = new AsyncWebServer(80);
 
   // Initialize history buffer
-  historyBuffer = new TempDataPoint[MAX_HISTORY_POINTS];
-  historyCount = 0;
-  historyIndex = 0;
-  lastHistoryUpdate = 0;
   lastWiFiCheck = 0;
+
+  recentHistoryCount = 0;
+  recentHistoryIndex = 0;
+  lastRecentHistoryUpdate = 0;
+
+  archiveHistoryCount = 0;
+  archiveHistoryIndex = 0;
+  lastArchiveHistoryUpdate = 0;
 }
 
 WebServerManager::~WebServerManager() {
   if (server) {
     delete server;
-  }
-  if (historyBuffer) {
-    delete[] historyBuffer;
   }
 }
 
@@ -119,10 +124,11 @@ void WebServerManager::begin() {
     uint32_t maxAllocHeap = ESP.getMaxAllocHeap();
 
     // History buffer size (constant)
-    const uint32_t historyBufferSize = MAX_HISTORY_POINTS * sizeof(TempDataPoint);
+    const uint32_t historyBufferSize = (RECENT_HISTORY_POINTS + ARCHIVE_HISTORY_POINTS) * sizeof(TempDataPoint);
 
     String json = "{";
     json += "\"version\":\"" + String(FIRMWARE_VERSION) + "\",";
+    json += "\"resetReason\":\"" + String(getResetReason()) + "\",";
     json += "\"buildDate\":\"" + String(BUILD_DATE) + "\",";
     json += "\"buildTime\":\"" + String(BUILD_TIME) + "\",";
     json += "\"fsBuildDate\":\"" + String(__DATE__) + "\",";
@@ -182,7 +188,16 @@ void WebServerManager::begin() {
     request->send(200, "application/json", logsJSON);
   });
 
-  // Route: Get temperature history
+  // New Daily History Routes - Register specific routes before general ones to avoid prefix collisions
+  server->on("/history/daily/csv", HTTP_GET, [this](AsyncWebServerRequest *request){
+    this->handleDownloadDaily(request);
+  });
+
+  server->on("/history/daily", HTTP_GET, [this](AsyncWebServerRequest *request){
+    this->handleDailyHistory(request);
+  });
+
+  // Route: Get high-resolution temperature history (24h RAM buffer)
   server->on("/history", HTTP_GET, [this](AsyncWebServerRequest *request){
     this->handleHistory(request);
   });
@@ -190,6 +205,14 @@ void WebServerManager::begin() {
   // Route: Get detected sensors
   server->on("/sensors", HTTP_GET, [this](AsyncWebServerRequest *request){
     this->handleSensors(request);
+  });
+
+  server->on("/history3m", HTTP_GET, [](AsyncWebServerRequest *request){
+    if (LittleFS.exists("/history3m.html")) {
+      request->send(LittleFS, "/history3m.html", "text/html");
+    } else {
+      request->send(404, "text/plain", "history3m.html missing");
+    }
   });
 
   // Route: Save sensor role mapping
@@ -347,6 +370,13 @@ void WebServerManager::connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     logger.successf("WiFi connected - IP: %s", WiFi.localIP().toString().c_str());
     logger.infof("Signal strength: %d dBm", WiFi.RSSI());
+
+    // Initialize real time now that WiFi is available
+    if (initializeTime()) {
+      logger.success("Real-time clock synchronized successfully");
+    } else {
+      logger.warning("Real-time clock synchronization failed, using uptime-based timestamps");
+    }
   } else {
     logger.error("WiFi connection failed! Starting Access Point (AP) mode...");
     
@@ -371,6 +401,73 @@ void WebServerManager::connectWiFi() {
   }
 }
 
+bool WebServerManager::saveDailyStats(float minT, float maxT, float hours) {
+    File file = LittleFS.open("/daily_stats.csv", "a"); // Append mode
+    if (!file) {
+        logger.error("Failed to open /daily_stats.csv for appending");
+        return false;
+    }
+    
+    time_t now = time(nullptr);
+    struct tm* timeinfo = localtime(&now);
+    char dateBuf[12];
+    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", timeinfo);
+    
+    file.printf("%s,%.1f,%.1f,%.2f\n", dateBuf, minT, maxT, hours);
+    file.close();
+    return true;
+}
+
+void WebServerManager::handleDailyHistory(AsyncWebServerRequest *request) {
+    if (!LittleFS.exists("/daily_stats.csv")) {
+        request->send(200, "application/json", "{\"points\":[]}");
+        return;
+    }
+    
+    File file = LittleFS.open("/daily_stats.csv", "r");
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    response->print("{\"points\":[");
+    
+    bool first = true;
+    while (file.available()) {
+        String line = file.readStringUntil('\n');
+        if (line.length() < 10) continue;
+        
+        int c1 = line.indexOf(',');
+        int c2 = line.indexOf(',', c1 + 1);
+        int c3 = line.indexOf(',', c2 + 1);
+        
+        if (c1 != -1 && c2 != -1) {
+            if (!first) response->print(",");
+            response->print("{");
+            response->print("\"d\":\"" + line.substring(0, c1) + "\",");
+            response->print("\"min\":" + line.substring(c1 + 1, c2) + ",");
+            if (c3 != -1) {
+                response->print("\"max\":" + line.substring(c2 + 1, c3) + ",");
+                response->print("\"c\":" + line.substring(c3 + 1));
+            } else {
+                response->print("\"max\":" + line.substring(c2 + 1) + ",");
+                response->print("\"c\":0");
+            }
+            response->print("}");
+            first = false;
+        }
+    }
+    
+    response->print("]}");
+    file.close();
+    request->send(response);
+}
+
+void WebServerManager::handleDownloadDaily(AsyncWebServerRequest *request) {
+    if (LittleFS.exists("/daily_stats.csv")) {
+        AsyncWebServerResponse *response = request->beginResponse(LittleFS, "/daily_stats.csv", "text/csv");
+        response->addHeader("Content-Disposition", "attachment; filename=daily_stats.csv");
+        request->send(response);
+    } else {
+        request->send(404, "text/plain", "No history available");
+    }
+}
 void WebServerManager::end() {
   server->end();
   Serial.println("HTTP server stopped");
@@ -452,6 +549,8 @@ void WebServerManager::handleData(AsyncWebServerRequest *request) {
   json += "\"maxSpa\":" + String(config->temp.maxSpaTemp, 1) + ",";
   json += "\"apMode\":" + String(WiFi.getMode() == WIFI_AP ? "true" : "false") + ",";
   json += "\"manualOverride\":" + String(config->temp.manualOverride ? "true" : "false") + ",";
+  json += "\"totalPumpHours\":" + String(config->temp.totalPumpHours, 2) + ",";
+  json += "\"dayPumpHours\":" + String(dayPumpHours, 2) + ",";
   json += "\"sampleInterval\":" + String(config->temp.sampleInterval) + ",";
   json += "\"sampleDuration\":" + String(config->temp.sampleDuration) + ",";
   json += "\"wifiSSID\":\"" + String(config->wifi.ssid) + "\",";
@@ -568,59 +667,97 @@ void WebServerManager::handleReset(AsyncWebServerRequest *request) {
 void WebServerManager::recordHistory() {
   unsigned long currentMillis = millis();
 
-  // Only record if enough time has passed
-  if (currentMillis - lastHistoryUpdate < HISTORY_INTERVAL_MS) {
-    return;
+  // Record into recent history (1-minute interval)
+  if (currentMillis - lastRecentHistoryUpdate >= RECENT_HISTORY_INTERVAL_MS) {
+    lastRecentHistoryUpdate = currentMillis;
+
+    recentHistoryBuffer[recentHistoryIndex].timestamp = (unsigned long)(getEpochMillis() / 1000);
+    recentHistoryBuffer[recentHistoryIndex].airTemp = sensorData->airTemp;
+    recentHistoryBuffer[recentHistoryIndex].spaTemp = sensorData->spaTemp;
+    recentHistoryBuffer[recentHistoryIndex].panelTemp = sensorData->panelTemp;
+    recentHistoryBuffer[recentHistoryIndex].pumpState = *pumpState;
+
+    recentHistoryIndex = (recentHistoryIndex + 1) % RECENT_HISTORY_POINTS;
+    if (recentHistoryCount < RECENT_HISTORY_POINTS) {
+      recentHistoryCount++;
+    }
   }
 
-  lastHistoryUpdate = currentMillis;
+  // Record into archive history (30-minute interval)
+  if (currentMillis - lastArchiveHistoryUpdate >= ARCHIVE_HISTORY_INTERVAL_MS) {
+    lastArchiveHistoryUpdate = currentMillis;
 
-  // Store current temperatures and pump state in circular buffer
-  // Store as seconds to avoid 32-bit truncation of epoch milliseconds
-  historyBuffer[historyIndex].timestamp = (unsigned long)(getEpochMillis() / 1000);
-  historyBuffer[historyIndex].airTemp = sensorData->airTemp;
-  historyBuffer[historyIndex].spaTemp = sensorData->spaTemp;
-  historyBuffer[historyIndex].panelTemp = sensorData->panelTemp;
-  historyBuffer[historyIndex].pumpState = *pumpState;
+    archiveHistoryBuffer[archiveHistoryIndex].timestamp = (unsigned long)(getEpochMillis() / 1000);
+    archiveHistoryBuffer[archiveHistoryIndex].airTemp = sensorData->airTemp;
+    archiveHistoryBuffer[archiveHistoryIndex].spaTemp = sensorData->spaTemp;
+    archiveHistoryBuffer[archiveHistoryIndex].panelTemp = sensorData->panelTemp;
+    archiveHistoryBuffer[archiveHistoryIndex].pumpState = *pumpState;
 
-  // Move to next position in circular buffer
-  historyIndex = (historyIndex + 1) % MAX_HISTORY_POINTS;
-
-  // Track how many points we have (up to MAX_HISTORY_POINTS)
-  if (historyCount < MAX_HISTORY_POINTS) {
-    historyCount++;
+    archiveHistoryIndex = (archiveHistoryIndex + 1) % ARCHIVE_HISTORY_POINTS;
+    if (archiveHistoryCount < ARCHIVE_HISTORY_POINTS) {
+      archiveHistoryCount++;
+    }
   }
 }
 
 void WebServerManager::handleHistory(AsyncWebServerRequest *request) {
-  // Use ResponseStream to avoid allocating a massive contiguous String in heap (OOM)
+  // Using ResponseStream prevents allocating a massive String on the heap,
+  // which is the main cause of reboots when generating JSON.
   AsyncResponseStream *response = request->beginResponseStream("application/json");
   response->print("{\"points\":[");
+  
+  std::vector<TempDataPoint> combinedPoints;
+  combinedPoints.reserve(recentHistoryCount + archiveHistoryCount); // Pre-allocate memory
 
-  // Read from circular buffer in chronological order
-  int startIdx = (historyCount < MAX_HISTORY_POINTS) ? 0 : historyIndex;
+  // 1. Determine the oldest point in the high-res buffer
+  unsigned long oldestRecentTimestamp = 0;
+  if (recentHistoryCount > 0) {
+    int oldestIdx = (recentHistoryIndex + (RECENT_HISTORY_POINTS - recentHistoryCount)) % RECENT_HISTORY_POINTS;
+    oldestRecentTimestamp = recentHistoryBuffer[oldestIdx].timestamp;
+  }
 
-  for (int i = 0; i < historyCount; i++) {
-    int idx = (startIdx + i) % MAX_HISTORY_POINTS;
+  // 2. Add archive points (30-min resolution)
+  // We only add archive points that are older than our high-res window
+  int archiveStartIdx = (archiveHistoryCount < ARCHIVE_HISTORY_POINTS) ? 0 : archiveHistoryIndex;
+  for (int i = 0; i < archiveHistoryCount; i++) {
+    int idx = (archiveStartIdx + i) % ARCHIVE_HISTORY_POINTS;
+    if (oldestRecentTimestamp == 0 || archiveHistoryBuffer[idx].timestamp < oldestRecentTimestamp) {
+      combinedPoints.push_back(archiveHistoryBuffer[idx]);
+    }
+  }
+
+  // 3. Add recent points (1-min resolution)
+  int recentStartIdx = (recentHistoryCount < RECENT_HISTORY_POINTS) ? 0 : recentHistoryIndex;
+  for (int i = 0; i < recentHistoryCount; i++) {
+    int idx = (recentStartIdx + i) % RECENT_HISTORY_POINTS;
+    combinedPoints.push_back(recentHistoryBuffer[idx]);
+  }
+
+  // Sort all combined points by timestamp to ensure chronological order
+  std::sort(combinedPoints.begin(), combinedPoints.end(), [](const TempDataPoint& a, const TempDataPoint& b) {
+    return a.timestamp < b.timestamp;
+  });
+
+  // Output the combined and sorted points
+  for (size_t i = 0; i < combinedPoints.size(); i++) {
     if (i > 0) response->print(",");
 
     response->print("{");
-    // Convert seconds back to milliseconds for Chart.js
     response->print("\"t\":");
-    response->print((unsigned long long)historyBuffer[idx].timestamp * 1000ULL);
+    response->print((unsigned long long)combinedPoints[i].timestamp * 1000ULL);
     response->print(",");
-    response->print("\"a\":"); response->print(historyBuffer[idx].airTemp, 1);
-    response->print(",\"s\":"); response->print(historyBuffer[idx].spaTemp, 1);
-    response->print(",\"p\":"); response->print(historyBuffer[idx].panelTemp, 1);
-    response->print(",\"pump\":"); response->print(historyBuffer[idx].pumpState ? "1" : "0");
+    response->print("\"a\":"); response->print(combinedPoints[i].airTemp, 1);
+    response->print(",\"s\":"); response->print(combinedPoints[i].spaTemp, 1);
+    response->print(",\"p\":"); response->print(combinedPoints[i].panelTemp, 1);
+    response->print(",\"pump\":"); response->print(combinedPoints[i].pumpState ? "1" : "0");
     response->print("}");
     
-    // Yield occasionally to keep the network stack happy during large transfers
-    if (i % 50 == 0) yield();
+    // Yield to the system every 50 points to prevent Watchdog reboots
+    if (i % 50 == 0) yield(); 
   }
 
   response->print("],\"count\":");
-  response->print(historyCount);
+  response->print(combinedPoints.size());
   response->print("}");
   request->send(response);
 }

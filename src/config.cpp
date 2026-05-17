@@ -10,6 +10,27 @@ const char* ConfigManager::SENSOR_CONFIG_FILE = "/sensor_config.json";
 ConfigManager::ConfigManager() {
 }
 
+bool ConfigManager::begin(SpaConfig& config) {
+  // Mount LittleFS first (required for loading config files)
+  if (!LittleFS.begin(true)) {
+    logger.error("LittleFS mount failed!");
+    return false;
+  }
+  logger.success("LittleFS mounted successfully");
+
+  // Load configuration from JSON files
+  Serial.println("\n[Initializing Configuration]");
+  logger.info("Loading configuration from JSON files");
+  if (loadAll(config)) {
+    printConfig(config);
+    logger.success("Configuration loaded successfully");
+    return true;
+  } else {
+    logger.warning("Failed to load config, using defaults");
+    return false;
+  }
+}
+
 bool ConfigManager::loadTempConfig(TempConfig& config) {
   if (!LittleFS.exists(TEMP_CONFIG_FILE)) {
     logger.warningf("Temperature config file not found: %s", TEMP_CONFIG_FILE);
@@ -41,6 +62,7 @@ bool ConfigManager::loadTempConfig(TempConfig& config) {
   config.pumpState = doc["pumpState"] | false;
   config.sampleInterval = doc["sampleInterval"] | 60;
   config.sampleDuration = doc["sampleDuration"] | 4;
+  config.totalPumpHours = doc["totalPumpHours"] | 0.0;
 
   logger.success("Temperature configuration loaded from JSON");
   return true;
@@ -157,6 +179,7 @@ bool ConfigManager::saveTempConfig(const TempConfig& config) {
   doc["pumpState"] = config.pumpState;
   doc["sampleInterval"] = config.sampleInterval;
   doc["sampleDuration"] = config.sampleDuration;
+  doc["totalPumpHours"] = config.totalPumpHours;
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {
@@ -219,6 +242,7 @@ bool ConfigManager::saveTempParams(const TempConfig& config) {
   doc["pumpState"] = current.pumpState;            // Keep current
   doc["sampleInterval"] = config.sampleInterval;
   doc["sampleDuration"] = config.sampleDuration;
+  doc["totalPumpHours"] = current.totalPumpHours;  // Preserve runtime
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {
@@ -251,6 +275,7 @@ bool ConfigManager::savePumpState(const TempConfig& config) {
   doc["pumpState"] = config.pumpState;
   doc["sampleInterval"] = current.sampleInterval;
   doc["sampleDuration"] = current.sampleDuration;
+  doc["totalPumpHours"] = current.totalPumpHours;  // Preserve runtime
 
   File file = LittleFS.open(TEMP_CONFIG_FILE, "w");
   if (!file) {

@@ -56,6 +56,18 @@ static void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
       logger.error("WiFi lost IP address");
       break;
 
+    case ARDUINO_EVENT_WIFI_AP_START:
+      logger.success("WiFi access point started");
+      break;
+
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+      logger.info("Client connected to access point");
+      break;
+
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+      logger.warning("Client disconnected from access point");
+      break;
+
     default:
       break;
   }
@@ -337,6 +349,25 @@ void WebServerManager::begin() {
   logger.success("HTTP server started on port 80");
 }
 
+void WebServerManager::ensureAccessPoint() {
+  String apSSID = "Spa-" + String(config->wifi.hostname);
+
+  if (WiFi.getMode() != WIFI_AP_STA) {
+    WiFi.mode(WIFI_AP_STA);
+  }
+
+  IPAddress apIP(192, 168, 4, 1);
+  IPAddress apGateway(192, 168, 4, 1);
+  IPAddress apSubnet(255, 255, 255, 0);
+  WiFi.softAPConfig(apIP, apGateway, apSubnet);
+
+  if (WiFi.softAP(apSSID.c_str())) {
+    logger.successf("AP Mode ready: %s (http://%s)", apSSID.c_str(), WiFi.softAPIP().toString().c_str());
+  } else {
+    logger.errorf("Failed to start AP Mode: %s", apSSID.c_str());
+  }
+}
+
 void WebServerManager::connectWiFi() {
   Serial.println("\n[Connecting to WiFi]");
   Serial.printf("SSID: %s\n", config->wifi.ssid);
@@ -347,13 +378,14 @@ void WebServerManager::connectWiFi() {
   // Register WiFi event handler for connection monitoring
   WiFi.onEvent(onWiFiEvent);
 
-  // Set hostname before connecting
+  // Set hostname before connecting and keep AP available as a fallback
   WiFi.setHostname(config->wifi.hostname);
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
 
   // Enable auto-reconnect to handle connection drops
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+  ensureAccessPoint();
 
   WiFi.begin(config->wifi.ssid, config->wifi.password);
 
@@ -378,18 +410,7 @@ void WebServerManager::connectWiFi() {
       logger.warning("Real-time clock synchronization failed, using uptime-based timestamps");
     }
   } else {
-    logger.error("WiFi connection failed! Starting Access Point (AP) mode...");
-    
-    WiFi.mode(WIFI_AP);
-    String apSSID = "Spa-" + String(config->wifi.hostname);
-    
-    // Start AP without password for configuration recovery
-    if (WiFi.softAP(apSSID.c_str())) {
-      logger.successf("AP Mode started: %s", apSSID.c_str());
-      logger.infof("Connect to this network and go to http://192.168.4.1");
-    } else {
-      logger.error("Failed to start AP Mode");
-    }
+    logger.warning("WiFi station connection failed, but AP mode remains available for direct access");
   }
 
   // Start mDNS responder (Works in both STA and AP mode)
@@ -483,6 +504,9 @@ void WebServerManager::checkWiFiConnection() {
 
   lastWiFiCheck = now;
 
+  // Keep the fallback AP available even when the station link is weak or reconnecting
+  ensureAccessPoint();
+
   // If disconnected, attempt reconnection
   if (WiFi.status() != WL_CONNECTED) {
     logger.warning("WiFi disconnected - attempting reconnect");
@@ -504,7 +528,7 @@ void WebServerManager::checkWiFiConnection() {
         MDNS.addService("http", "tcp", 80);
       }
     } else {
-      logger.error("WiFi reconnection failed - will retry in 30 seconds");
+      logger.error("WiFi reconnection failed - AP mode remains available");
     }
   }
 }

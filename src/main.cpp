@@ -18,7 +18,7 @@ GPIO25	Relay #3
 GPIO26	Relay #4
 */
 // Version information
-const char* FIRMWARE_VERSION = "3.2";
+const char* FIRMWARE_VERSION = "3.3";
 const char* BUILD_DATE = __DATE__;
 const char* BUILD_TIME = __TIME__;
 

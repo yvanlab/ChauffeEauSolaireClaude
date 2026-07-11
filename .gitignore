@@ -6,6 +6,7 @@ libdeps/
 # Sensitive data - Do not share your WiFi credentials
 data/wifi_config.json
 data/temp_config.json
+data/daily_stats.csv
 
 # OS files
 .DS_Store

@@ -1,0 +1,7 @@
+{
+  "tempDifferenceThreshold": 5.0,
+  "minPanelTemp": 25.0,
+  "maxSpaTemp": 40.0,
+  "manualOverride": false,
+  "pumpState": false
+}

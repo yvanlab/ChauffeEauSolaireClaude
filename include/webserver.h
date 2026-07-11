@@ -66,6 +66,9 @@ private:
   // WiFi monitoring
   unsigned long lastWiFiCheck;
 
+  // WiFi management helpers
+  void ensureAccessPoint();
+
   // Route handlers
   void handleRoot(AsyncWebServerRequest *request);
   void handleData(AsyncWebServerRequest *request);

@@ -18,9 +18,10 @@ GPIO25	Relay #3
 GPIO26	Relay #4
 */
 // Version information
-const char* FIRMWARE_VERSION = "3.3";
+const char* FIRMWARE_VERSION = "3.5";
 const char* BUILD_DATE = __DATE__;
 const char* BUILD_TIME = __TIME__;
+
 
 // Pin definitions
 #define ONE_WIRE_BUS 4    // GPIO4 for DS18B20 sensors
@@ -45,10 +46,14 @@ SensorData sensorData;
 bool pumpState = false;
 
 // Daily Stats Tracking
-float dayMinSpa = 100.0;
-float dayMaxSpa = -100.0;
-float dayPumpHours = 0.0;
-int lastSavedDay = -1;
+RTC_DATA_ATTR float dayMinAir = 100.0;
+RTC_DATA_ATTR float dayMaxAir = -100.0;
+RTC_DATA_ATTR float dayMinSpa = 100.0;
+RTC_DATA_ATTR float dayMaxSpa = -100.0;
+RTC_DATA_ATTR float dayMinPanel = 100.0;
+RTC_DATA_ATTR float dayMaxPanel = -100.0;
+RTC_DATA_ATTR float dayPumpHours = 0.0;
+RTC_DATA_ATTR int lastSavedDay = -1;
 RTC_DATA_ATTR int lastRebootDay = -1;
 
 // Web server
@@ -164,9 +169,17 @@ void loop() {
     }
 
     // Update Daily Extremes
+    if (sensorData.airTemp > -40.0 && sensorData.airTemp < 90.0) {
+        if (sensorData.airTemp < dayMinAir) dayMinAir = sensorData.airTemp;
+        if (sensorData.airTemp > dayMaxAir) dayMaxAir = sensorData.airTemp;
+    }
     if (sensorData.spaTemp > 0.1 && sensorData.spaTemp < 90.0) {
         if (sensorData.spaTemp < dayMinSpa) dayMinSpa = sensorData.spaTemp;
         if (sensorData.spaTemp > dayMaxSpa) dayMaxSpa = sensorData.spaTemp;
+    }
+    if (sensorData.panelTemp > -40.0 && sensorData.panelTemp < 110.0) {
+        if (sensorData.panelTemp < dayMinPanel) dayMinPanel = sensorData.panelTemp;
+        if (sensorData.panelTemp > dayMaxPanel) dayMaxPanel = sensorData.panelTemp;
     }
 
     // Check for 11 PM (23:00) to save daily stats
@@ -177,8 +190,12 @@ void loop() {
         if (webServer->saveDailyStats(dayMinSpa, dayMaxSpa, dayPumpHours)) {
             lastSavedDay = timeinfo->tm_mday;
             // Reset for tomorrow
+            dayMinAir = 100.0;
+            dayMaxAir = -100.0;
             dayMinSpa = 100.0;
             dayMaxSpa = -100.0;
+            dayMinPanel = 100.0;
+            dayMaxPanel = -100.0;
             dayPumpHours = 0.0;
             // configManager.saveTempConfig(config.temp); // Persist runtime hours
             logger.success("Daily extremes saved for 23:00");
@@ -295,39 +312,119 @@ void setupSensors() {
 void readTemperatures() {
   sensors.requestTemperatures();
 
-  if (sensorCount >= 3) {
-    // Read raw temperatures and apply calibration offsets
-    sensorData.airTemp = sensors.getTempC(airSensor) + config.sensors.airOffset;
-    sensorData.spaTemp = sensors.getTempC(spaSensor) + config.sensors.spaOffset;
-    sensorData.panelTemp = sensors.getTempC(panelSensor) + config.sensors.panelOffset;
+  // Static error trackers for each sensor
+  static int airErrorCount = 0;
+  static int spaErrorCount = 0;
+  static int panelErrorCount = 0;
+  const int MAX_CONSECUTIVE_ERRORS = 3;
 
-    // Check for sensor errors
-    if (sensorData.airTemp == DEVICE_DISCONNECTED_C) {
-      sensorData.airTemp = 0.0;
-      logger.warning("Air sensor disconnected!");
+  static bool airWasOffline = false;
+  static bool spaWasOffline = false;
+  static bool panelWasOffline = false;
+
+  if (sensorCount >= 3) {
+    // Air Sensor
+    float rawAir = sensors.getTempC(airSensor);
+    if (rawAir == DEVICE_DISCONNECTED_C || rawAir < -55.0f || rawAir > 125.0f) {
+      airErrorCount++;
+      if (airErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+        sensorData.airTemp = -999.0f;
+        if (!airWasOffline) {
+          logger.error("Air sensor disconnected (offline)!");
+          airWasOffline = true;
+        }
+      }
+    } else {
+      airErrorCount = 0;
+      sensorData.airTemp = rawAir + config.sensors.airOffset;
+      if (airWasOffline) {
+        logger.success("Air sensor reconnected.");
+        airWasOffline = false;
+      }
     }
-    if (sensorData.spaTemp == DEVICE_DISCONNECTED_C) {
-      sensorData.spaTemp = 0.0;
-      logger.warning("Spa sensor disconnected!");
+
+    // Spa Sensor
+    float rawSpa = sensors.getTempC(spaSensor);
+    if (rawSpa == DEVICE_DISCONNECTED_C || rawSpa < -55.0f || rawSpa > 125.0f) {
+      spaErrorCount++;
+      if (spaErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+        sensorData.spaTemp = -999.0f;
+        if (!spaWasOffline) {
+          logger.error("Spa sensor disconnected (offline)!");
+          spaWasOffline = true;
+        }
+      }
+    } else {
+      spaErrorCount = 0;
+      sensorData.spaTemp = rawSpa + config.sensors.spaOffset;
+      if (spaWasOffline) {
+        logger.success("Spa sensor reconnected.");
+        spaWasOffline = false;
+      }
     }
-    if (sensorData.panelTemp == DEVICE_DISCONNECTED_C) {
-      sensorData.panelTemp = 0.0;
-      logger.warning("Panel sensor disconnected!");
+
+    // Panel Sensor
+    float rawPanel = sensors.getTempC(panelSensor);
+    if (rawPanel == DEVICE_DISCONNECTED_C || rawPanel < -55.0f || rawPanel > 125.0f) {
+      panelErrorCount++;
+      if (panelErrorCount >= MAX_CONSECUTIVE_ERRORS) {
+        sensorData.panelTemp = -999.0f;
+        if (!panelWasOffline) {
+          logger.error("Panel sensor disconnected (offline)!");
+          panelWasOffline = true;
+        }
+      }
+    } else {
+      panelErrorCount = 0;
+      sensorData.panelTemp = rawPanel + config.sensors.panelOffset;
+      if (panelWasOffline) {
+        logger.success("Panel sensor reconnected.");
+        panelWasOffline = false;
+      }
     }
-  } else if (sensorCount > 0) {
-    // Read whatever sensors are available for testing
-    DeviceAddress tempAddr;
-    for (int i = 0; i < sensorCount; i++) {
-      sensors.getAddress(tempAddr, i);
-      float temp = sensors.getTempC(tempAddr);
-      if (i == 0) sensorData.airTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
-      if (i == 1) sensorData.spaTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
-      if (i == 2) sensorData.panelTemp = (temp != DEVICE_DISCONNECTED_C) ? temp : 0.0;
+  } else {
+    // If we don't have at least 3 sensors configured/registered,
+    // fallback to reading whatever indexes are on the bus (up to 3)
+    for (int i = 0; i < 3; i++) {
+      float temp = -999.0f;
+      if (i < sensorCount) {
+        DeviceAddress tempAddr;
+        if (sensors.getAddress(tempAddr, i)) {
+          float raw = sensors.getTempC(tempAddr);
+          if (raw != DEVICE_DISCONNECTED_C && raw >= -55.0f && raw <= 125.0f) {
+            temp = raw;
+          }
+        }
+      }
+
+      if (i == 0) {
+        sensorData.airTemp = (temp > -99.0f) ? (temp + config.sensors.airOffset) : -999.0f;
+      } else if (i == 1) {
+        sensorData.spaTemp = (temp > -99.0f) ? (temp + config.sensors.spaOffset) : -999.0f;
+      } else if (i == 2) {
+        sensorData.panelTemp = (temp > -99.0f) ? (temp + config.sensors.panelOffset) : -999.0f;
+      }
     }
   }
 }
 
 void controlPump() {
+  // Fail-safe: if any sensor is offline, force pump OFF in Auto mode
+  if (sensorData.airTemp < -99.0f || sensorData.spaTemp < -99.0f || sensorData.panelTemp < -99.0f) {
+    static unsigned long lastErrorLog = 0;
+    if (millis() - lastErrorLog > 60000 || lastErrorLog == 0) {
+      logger.error("CRITICAL: Sensor offline - pump forced OFF for safety!");
+      lastErrorLog = millis();
+    }
+    
+    if (pumpState) {
+      pumpState = false;
+      digitalWrite(RELAY_PIN, LOW);
+      logger.error("Pump SHUT DOWN due to sensor error");
+    }
+    return;
+  }
+
   bool shouldActivate = false;
 
   // Periodic sampling state

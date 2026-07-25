@@ -16,9 +16,9 @@ from urllib.parse import urlparse, parse_qs
 class SystemState:
     def __init__(self):
         self.start_time = time.time()
-        self.air_temp = 20.5
-        self.spa_temp = 20.1
-        self.panel_temp = 15.0
+        self.air_temp = 22.4
+        self.spa_temp = 33.2
+        self.panel_temp = 27.8
         self.pump_state = False
         self.manual_override = False
         self.temp_diff = 5.0
@@ -36,15 +36,19 @@ class SystemState:
         self.logs = []
         self.history = []
         self.daily_history = []
-        self.day_min_spa = 100.0
-        self.day_max_spa = -100.0
+        self.day_min_air = self.air_temp - 2.0
+        self.day_max_air = self.air_temp + 2.0
+        self.day_min_spa = self.spa_temp - 1.5
+        self.day_max_spa = self.spa_temp + 2.5
+        self.day_min_panel = self.panel_temp - 4.0
+        self.day_max_panel = self.panel_temp + 8.0
         self.day_pump_hours = 0.0
         self.last_saved_day = -1
         # Simulated sensors with unique addresses
         self.sensors = [
-            {"address": "28-FF-64-1E-03-15-01-9A", "role": "air", "temp": 20.5},
-            {"address": "28-FF-64-1E-03-15-02-B3", "role": "spa", "temp": 30.1},
-            {"address": "28-FF-64-1E-03-15-03-C7", "role": "panel", "temp": 25.0}
+            {"address": "28-FF-64-1E-03-15-01-9A", "role": "air", "temp": 22.4},
+            {"address": "28-FF-64-1E-03-15-02-B3", "role": "spa", "temp": 33.2},
+            {"address": "28-FF-64-1E-03-15-03-C7", "role": "panel", "temp": 27.8}
         ]
         self.use_sensor_mapping = False
         self.add_log("OK", "System simulator started")
@@ -148,9 +152,17 @@ class SystemState:
             self.day_pump_hours += (2.0 / 3600.0)
 
         # Update daily extremes
+        if 0.1 < self.air_temp < 90.0:
+            if self.air_temp < self.day_min_air: self.day_min_air = self.air_temp
+            if self.air_temp > self.day_max_air: self.day_max_air = self.air_temp
+
         if 0.1 < self.spa_temp < 90.0:
             if self.spa_temp < self.day_min_spa: self.day_min_spa = self.spa_temp
             if self.spa_temp > self.day_max_spa: self.day_max_spa = self.spa_temp
+
+        if -40.0 < self.panel_temp < 110.0:
+            if self.panel_temp < self.day_min_panel: self.day_min_panel = self.panel_temp
+            if self.panel_temp > self.day_max_panel: self.day_max_panel = self.panel_temp
 
         # Simulate 11 PM save logic
         current_struct = time.localtime()
@@ -163,8 +175,12 @@ class SystemState:
                 "c": round(self.day_pump_hours, 2)
             })
             self.last_saved_day = current_struct.tm_mday
+            self.day_min_air = 100.0
+            self.day_max_air = -100.0
             self.day_min_spa = 100.0
             self.day_max_spa = -100.0
+            self.day_min_panel = 100.0
+            self.day_max_panel = -100.0
             self.day_pump_hours = 0.0
             self.add_log("OK", f"Daily extremes saved for {date_str}")
 
@@ -222,6 +238,12 @@ class SimulatorHandler(BaseHTTPRequestHandler):
                 "airTemp": round(state.air_temp, 1),
                 "spaTemp": round(state.spa_temp, 1),
                 "panelTemp": round(state.panel_temp, 1),
+                "airMin": round(state.day_min_air, 1),
+                "airMax": round(state.day_max_air, 1),
+                "spaMin": round(state.day_min_spa, 1),
+                "spaMax": round(state.day_max_spa, 1),
+                "panelMin": round(state.day_min_panel, 1),
+                "panelMax": round(state.day_max_panel, 1),
                 "pumpState": state.pump_state,
                 "tempDiff": state.temp_diff,
                 "hysteresis": state.hysteresis,

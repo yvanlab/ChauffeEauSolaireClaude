@@ -32,6 +32,26 @@
       font-size: 2em;
       margin-bottom: 10px;
     }
+    .header-actions {
+      margin-top: 12px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .header-btn {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 0.95em;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+    .header-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
     .content {
       padding: 30px;
     }
@@ -48,6 +68,11 @@
       text-align: center;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       transition: transform 0.3s;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 170px;
     }
     .temp-card:hover {
       transform: translateY(-5px);
@@ -66,6 +91,20 @@
       will-change: contents;
       backface-visibility: hidden;
       -webkit-font-smoothing: antialiased;
+    }
+    .temp-range {
+      margin-top: 10px;
+      font-size: 0.88em;
+      color: #4b5563;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .range-line {
+      font-weight: 600;
+    }
+    .error-text {
+      color: #dc3545 !important;
     }
     .pump-status {
       background: #f8f9fa;
@@ -541,6 +580,9 @@
     <div class="header">
       <h1>☀️ Chauffage Solaire Spa</h1>
       <p>Contrôle automatique de température</p>
+      <div class="header-actions">
+        <button class="header-btn" onclick="refreshAll()">🔄 Rafraîchir tout</button>
+      </div>
     </div>
 
     <div class="content">
@@ -551,14 +593,26 @@
           <div class="temp-card">
             <div class="temp-label">Air</div>
             <div class="temp-value" id="airTemp">--</div>
+            <div class="temp-range" id="airRange">
+              <div class="range-line" id="airMinTemp">Min: --°C</div>
+              <div class="range-line" id="airMaxTemp">Max: --°C</div>
+            </div>
           </div>
           <div class="temp-card">
             <div class="temp-label">Spa</div>
             <div class="temp-value" id="spaTemp">--</div>
+            <div class="temp-range" id="spaRange">
+              <div class="range-line" id="spaMinTemp">Min: --°C</div>
+              <div class="range-line" id="spaMaxTemp">Max: --°C</div>
+            </div>
           </div>
           <div class="temp-card">
             <div class="temp-label">Panneaux</div>
             <div class="temp-value" id="panelTemp">--</div>
+            <div class="temp-range" id="panelRange">
+              <div class="range-line" id="panelMinTemp">Min: --°C</div>
+              <div class="range-line" id="panelMaxTemp">Max: --°C</div>
+            </div>
           </div>
         </div>
       </div>
@@ -694,7 +748,7 @@
 
               <div class="form-group">
                 <label for="hysteresis">Hystérésis (°C):</label>
-                <input type="number" id="hysteresis" step="0.1" min="0.1" max="5" required>
+                <input type="number" id="hysteresis" step="0.1" min="0.1" required>
                 <small>La pompe s'arrête si la différence tombe sous (Seuil - Hystérésis)</small>
               </div>
             </div>
@@ -1147,8 +1201,8 @@
     // Initialize form detection
     setupFormEditingDetection();
 
-    // Update data every 2 seconds
-    setInterval(updateData, 2000);
+    // Update data every 1 minute
+    setInterval(updateData, 60000);
     updateData();
 
     // Load system info once at startup
@@ -1193,7 +1247,7 @@
             info.fsPercent
           );
 
-          // Update uptime and dynamic info every 10 seconds
+          // Update uptime and dynamic info every 1 minute
           setInterval(() => {
             fetch('/system/info')
               .then(response => response.json())
@@ -1218,7 +1272,7 @@
                 );
               })
               .catch(error => console.error('Error updating info:', error));
-          }, 10000);
+          }, 60000);
         })
         .catch(error => console.error('Error loading system info:', error));
     }
@@ -1292,9 +1346,9 @@
         .then(response => response.json())
         .then(data => {
           // Only update if value changed to prevent blinking
-          updateIfChanged('airTemp', data.airTemp.toFixed(1) + '°C');
-          updateIfChanged('spaTemp', data.spaTemp.toFixed(1) + '°C');
-          updateIfChanged('panelTemp', data.panelTemp.toFixed(1) + '°C');
+          updateTempDisplay('airTemp', data.airTemp, 'airMinTemp', 'airMaxTemp', data.airMin, data.airMax);
+          updateTempDisplay('spaTemp', data.spaTemp, 'spaMinTemp', 'spaMaxTemp', data.spaMin, data.spaMax);
+          updateTempDisplay('panelTemp', data.panelTemp, 'panelMinTemp', 'panelMaxTemp', data.panelMin, data.panelMax);
           updateIfChanged('totalPumpHours', data.totalPumpHours.toFixed(2));
 
           const pumpIndicator = document.getElementById('pumpIndicator');
@@ -1342,6 +1396,58 @@
           }
         })
         .catch(error => console.error('Error fetching data:', error));
+    }
+
+    function refreshAll() {
+      updateData();
+      loadSystemInfo();
+      updateLogs();
+      refreshChart();
+    }
+
+    function updateTempDisplay(elementId, value, minElementId, maxElementId, minValue, maxValue) {
+      const element = document.getElementById(elementId);
+      const minElement = document.getElementById(minElementId);
+      const maxElement = document.getElementById(maxElementId);
+      if (!element) return;
+      
+      let newValue = '';
+      let isError = false;
+      
+      if (value === null || value === undefined || value < -99.0) {
+        newValue = 'Erreur';
+        isError = true;
+      } else {
+        newValue = value.toFixed(1) + '°C';
+      }
+      
+      if (element.textContent !== newValue) {
+        element.textContent = newValue;
+      }
+
+      if (minElement) {
+        const minText = (minValue === null || minValue === undefined || minValue < -99.0)
+          ? '--°C'
+          : minValue.toFixed(1) + '°C';
+        if (minElement.textContent !== 'Min: ' + minText) {
+          minElement.textContent = 'Min: ' + minText;
+        }
+      }
+
+      if (maxElement) {
+        const maxText = (maxValue === null || maxValue === undefined || maxValue < -99.0)
+          ? '--°C'
+          : maxValue.toFixed(1) + '°C';
+        if (maxElement.textContent !== 'Max: ' + maxText) {
+          maxElement.textContent = 'Max: ' + maxText;
+        }
+      }
+      
+      if (isError) {
+        element.classList.add('error-text');
+      } else {
+        element.classList.remove('error-text');
+      }
     }
 
     function updateIfChanged(elementId, newValue) {
@@ -1735,8 +1841,8 @@
       icon.textContent = autoScroll ? '📌' : '📍';
     }
 
-    // Update logs every 3 seconds
-    setInterval(updateLogs, 3000);
+    // Update logs every 1 minute
+    setInterval(updateLogs, 60000);
     // Initial load
     setTimeout(updateLogs, 1000);
 
@@ -1892,8 +1998,8 @@
       // Load initial data
       updateChart();
 
-      // Auto-refresh chart every 30 seconds
-      setInterval(updateChart, 30000);
+      // Auto-refresh chart every 60 seconds
+      setInterval(updateChart, 60000);
     }
 
     function updateChart() {
@@ -1922,9 +2028,9 @@
 
             // Pump state: 1 when ON, null when OFF (creates gaps in background)
             pumpData.push({ x: date, y: point.pump ? 1 : null });
-            airData.push({ x: date, y: point.a });
-            spaData.push({ x: date, y: point.s });
-            panelData.push({ x: date, y: point.p });
+            airData.push({ x: date, y: (point.a === null || point.a === undefined || point.a < -99.0) ? null : point.a });
+            spaData.push({ x: date, y: (point.s === null || point.s === undefined || point.s < -99.0) ? null : point.s });
+            panelData.push({ x: date, y: (point.p === null || point.p === undefined || point.p < -99.0) ? null : point.p });
           });
 
           // Update chart data (pump is dataset[0])

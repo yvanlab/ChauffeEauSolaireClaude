@@ -1,10 +1,10 @@
 {
   "tempDifferenceThreshold": 10.0,
-  "minExternalTemp": 25.0,
-  "maxSpaTemp": 40.0,
-  "hysteresis" : 5,
+  "minExternalTemp": 30.0,
+  "maxSpaTemp": 45.0,
+  "hysteresis" : 8,
   "manualOverride": false,
   "pumpState": false,
-  "sampleInterval": 0,
-  "sampleDuration": 4
+  "sampleInterval": 120,
+  "sampleDuration": 2
 }

@@ -20,6 +20,12 @@ bool parseAddress(const String& addrStr, uint8_t* addr);
 extern DallasTemperature sensors;
 extern int sensorCount;
 extern float dayPumpHours;
+extern float dayMinAir;
+extern float dayMaxAir;
+extern float dayMinSpa;
+extern float dayMaxSpa;
+extern float dayMinPanel;
+extern float dayMaxPanel;
 extern uint8_t airSensor[8], spaSensor[8], panelSensor[8];
 
 // External configuration manager (defined in main.cpp)
@@ -350,6 +356,11 @@ void WebServerManager::begin() {
 }
 
 void WebServerManager::ensureAccessPoint() {
+  // If AP is already active and configured, do nothing
+  /*if (WiFi.getMode() == WIFI_AP_STA && WiFi.softAPIP() != IPAddress(0, 0, 0, 0)) {
+    return;
+  }*/
+
   String apSSID = "Spa-" + String(config->wifi.hostname);
 
   if (WiFi.getMode() != WIFI_AP_STA) {
@@ -423,16 +434,32 @@ void WebServerManager::connectWiFi() {
 }
 
 bool WebServerManager::saveDailyStats(float minT, float maxT, float hours) {
+    time_t now = time(nullptr);
+    struct tm* timeinfo = localtime(&now);
+    char dateBuf[12];
+    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", timeinfo);
+    
+    // Check if the date already exists in the file to prevent duplicates
+    if (LittleFS.exists("/daily_stats.csv")) {
+        File readFile = LittleFS.open("/daily_stats.csv", "r");
+        if (readFile) {
+            while (readFile.available()) {
+                String line = readFile.readStringUntil('\n');
+                if (line.startsWith(dateBuf)) {
+                    logger.warningf("Daily stats for %s already exist, skipping to prevent duplicates", dateBuf);
+                    readFile.close();
+                    return true; // Already saved
+                }
+            }
+            readFile.close();
+        }
+    }
+
     File file = LittleFS.open("/daily_stats.csv", "a"); // Append mode
     if (!file) {
         logger.error("Failed to open /daily_stats.csv for appending");
         return false;
     }
-    
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    char dateBuf[12];
-    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", timeinfo);
     
     file.printf("%s,%.1f,%.1f,%.2f\n", dateBuf, minT, maxT, hours);
     file.close();
@@ -450,6 +477,7 @@ void WebServerManager::handleDailyHistory(AsyncWebServerRequest *request) {
     response->print("{\"points\":[");
     
     bool first = true;
+    String lastDate = "";
     while (file.available()) {
         String line = file.readStringUntil('\n');
         if (line.length() < 10) continue;
@@ -459,9 +487,16 @@ void WebServerManager::handleDailyHistory(AsyncWebServerRequest *request) {
         int c3 = line.indexOf(',', c2 + 1);
         
         if (c1 != -1 && c2 != -1) {
+            String currentDate = line.substring(0, c1);
+            if (currentDate == lastDate) {
+                // Skip historical duplicates to keep the chart clean
+                continue;
+            }
+            lastDate = currentDate;
+
             if (!first) response->print(",");
             response->print("{");
-            response->print("\"d\":\"" + line.substring(0, c1) + "\",");
+            response->print("\"d\":\"" + currentDate + "\",");
             response->print("\"min\":" + line.substring(c1 + 1, c2) + ",");
             if (c3 != -1) {
                 response->print("\"max\":" + line.substring(c2 + 1, c3) + ",");
@@ -498,14 +533,14 @@ void WebServerManager::checkWiFiConnection() {
   unsigned long now = millis();
 
   // Check WiFi status every 30 seconds
-  if (now - lastWiFiCheck < 30000) {
+  if (now - lastWiFiCheck < 60000) {
     return;
   }
-
+  
   lastWiFiCheck = now;
 
   // Keep the fallback AP available even when the station link is weak or reconnecting
-  ensureAccessPoint();
+  //ensureAccessPoint();
 
   // If disconnected, attempt reconnection
   if (WiFi.status() != WL_CONNECTED) {
@@ -566,6 +601,12 @@ void WebServerManager::handleData(AsyncWebServerRequest *request) {
   json += "\"airTemp\":" + String(sensorData->airTemp, 1) + ",";
   json += "\"spaTemp\":" + String(sensorData->spaTemp, 1) + ",";
   json += "\"panelTemp\":" + String(sensorData->panelTemp, 1) + ",";
+  json += "\"airMin\":" + String(dayMinAir, 1) + ",";
+  json += "\"airMax\":" + String(dayMaxAir, 1) + ",";
+  json += "\"spaMin\":" + String(dayMinSpa, 1) + ",";
+  json += "\"spaMax\":" + String(dayMaxSpa, 1) + ",";
+  json += "\"panelMin\":" + String(dayMinPanel, 1) + ",";
+  json += "\"panelMax\":" + String(dayMaxPanel, 1) + ",";
   json += "\"pumpState\":" + String(*pumpState ? "true" : "false") + ",";
   json += "\"tempDiff\":" + String(config->temp.tempDifferenceThreshold, 1) + ",";
   json += "\"hysteresis\":" + String(config->temp.hysteresis, 1) + ",";
